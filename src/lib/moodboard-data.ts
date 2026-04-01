@@ -57,7 +57,6 @@ export type Workspace = {
 };
 
 export type AppState = {
-  isSignedIn: boolean;
   userName: string;
   activeWorkspaceId: string;
   selectedItemId: string | null;
@@ -71,7 +70,6 @@ export const defaultView: CanvasView = {
 };
 
 export const initialAppState: AppState = {
-  isSignedIn: false,
   userName: "Dimitris",
   activeWorkspaceId: "brand-sprint",
   selectedItemId: "brand-title",

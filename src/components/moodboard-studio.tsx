@@ -1,6 +1,8 @@
 "use client";
 /* eslint-disable @next/next/no-img-element */
 
+import { useRouter } from "next/navigation";
+import type { User } from "@supabase/supabase-js";
 import {
   startTransition,
   useDeferredValue,
@@ -24,6 +26,7 @@ import {
   type TextItem,
   type Workspace,
 } from "@/lib/moodboard-data";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const STORAGE_KEY = "muse-board-state-v1";
 
@@ -201,7 +204,16 @@ function formatItemType(type: BoardItem["type"]) {
   return type === "image" ? "Image frame" : "Text note";
 }
 
-export function MoodboardStudio() {
+type MoodboardStudioProps = {
+  initialUser: User | null;
+  isSupabaseConfigured: boolean;
+};
+
+export function MoodboardStudio({
+  initialUser,
+  isSupabaseConfigured,
+}: MoodboardStudioProps) {
+  const router = useRouter();
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pointerActionRef = useRef<PointerAction | null>(null);
@@ -210,8 +222,19 @@ export function MoodboardStudio() {
   const [appState, setAppState] = useState<AppState>(loadInitialState);
   const [workspaceQuery, setWorkspaceQuery] = useState("");
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(initialUser);
+  const [isAuthLoading, setIsAuthLoading] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [supabase] = useState(() =>
+    isSupabaseConfigured ? createSupabaseBrowserClient() : null,
+  );
 
   const deferredWorkspaceQuery = useDeferredValue(workspaceQuery);
+  const currentUserName =
+    currentUser?.user_metadata?.full_name ??
+    currentUser?.user_metadata?.name ??
+    currentUser?.email?.split("@")[0] ??
+    appState.userName;
 
   const activeWorkspace =
     appState.workspaces.find(
@@ -242,6 +265,27 @@ export function MoodboardStudio() {
 
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
   }, [appState]);
+
+  useEffect(() => {
+    setCurrentUser(initialUser);
+  }, [initialUser]);
+
+  useEffect(() => {
+    if (!supabase) {
+      return;
+    }
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      startTransition(() => {
+        setCurrentUser(session?.user ?? null);
+        router.refresh();
+      });
+    });
+
+    return () => subscription.unsubscribe();
+  }, [router, supabase]);
 
   useEffect(() => {
     const handlePointerMove = (event: PointerEvent) => {
@@ -513,7 +557,7 @@ export function MoodboardStudio() {
       description: "Fresh space for a new mood direction.",
       accent: "#6f8b79",
       shared: false,
-      collaborators: [getInitials(appState.userName)],
+      collaborators: [getInitials(currentUserName)],
       updatedAt: new Date().toISOString(),
       view: defaultView,
       items: [
@@ -543,6 +587,49 @@ export function MoodboardStudio() {
         workspaces: [workspace, ...previous.workspaces],
       }));
     });
+  }
+
+  async function handleSignIn() {
+    if (!supabase) {
+      setAuthError(
+        "Supabase is not configured yet. Add the project URL and anon key in Vercel first.",
+      );
+      return;
+    }
+
+    setIsAuthLoading(true);
+    setAuthError(null);
+
+    const redirectTo = `${window.location.origin}/auth/callback`;
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: "google",
+      options: {
+        redirectTo,
+      },
+    });
+
+    if (error) {
+      setIsAuthLoading(false);
+      setAuthError(error.message);
+    }
+  }
+
+  async function handleSignOut() {
+    if (!supabase) {
+      return;
+    }
+
+    setIsAuthLoading(true);
+    const { error } = await supabase.auth.signOut();
+    setIsAuthLoading(false);
+
+    if (error) {
+      setAuthError(error.message);
+      return;
+    }
+
+    setCurrentUser(null);
+    router.refresh();
   }
 
   async function insertFiles(files: File[]) {
@@ -779,7 +866,7 @@ export function MoodboardStudio() {
     (item): item is TextItem => item.type === "text",
   );
 
-  if (!appState.isSignedIn) {
+  if (!currentUser) {
     return (
       <main className="relative flex min-h-screen overflow-hidden px-5 py-6 text-[var(--foreground)] sm:px-8">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(212,108,78,0.16),transparent_26%),radial-gradient(circle_at_bottom_left,rgba(94,122,201,0.14),transparent_24%)]" />
@@ -804,17 +891,24 @@ export function MoodboardStudio() {
             <div className="mt-10 flex flex-col gap-4 sm:flex-row">
               <button
                 type="button"
-                onClick={() =>
-                  setAppState((previous) => ({ ...previous, isSignedIn: true }))
-                }
+                onClick={() => void handleSignIn()}
+                disabled={isAuthLoading}
                 className="inline-flex items-center justify-center rounded-full bg-[var(--foreground)] px-6 py-3.5 text-sm font-semibold text-white transition hover:translate-y-[-1px] hover:bg-black"
               >
-                Continue with Google
+                {isAuthLoading ? "Connecting..." : "Continue with Google"}
               </button>
               <div className="rounded-full border border-black/8 bg-white/70 px-5 py-3 text-sm text-[var(--muted)]">
-                Demo auth now, Supabase Google OAuth next.
+                {isSupabaseConfigured
+                  ? "Google OAuth is connected through Supabase."
+                  : "Add Supabase env vars to activate Google login."}
               </div>
             </div>
+
+            {authError ? (
+              <div className="mt-4 rounded-[22px] border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent)]">
+                {authError}
+              </div>
+            ) : null}
 
             <div className="mt-10 space-y-3 text-sm text-[var(--muted)]">
               <p>Core interaction thesis:</p>
@@ -903,7 +997,7 @@ export function MoodboardStudio() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <ViewerBadge tone="accent">Muse Board</ViewerBadge>
-            <ViewerBadge tone="muted">Google auth entry in demo mode</ViewerBadge>
+            <ViewerBadge tone="muted">Google auth live</ViewerBadge>
           </div>
           <h1 className="mt-2 text-2xl font-extrabold tracking-[-0.04em]">
             Moodboard studio
@@ -915,11 +1009,16 @@ export function MoodboardStudio() {
             <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
               Sync
             </p>
-            <p className="text-sm font-semibold">Local draft saved automatically</p>
+            <p className="text-sm font-semibold">
+              Signed in as {currentUser.email ?? currentUserName}
+            </p>
           </div>
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--foreground)] text-sm font-semibold text-white">
-            {getInitials(appState.userName)}
+            {getInitials(currentUserName)}
           </div>
+          <ToolbarButton onClick={() => void handleSignOut()}>
+            {isAuthLoading ? "..." : "Sign out"}
+          </ToolbarButton>
         </div>
       </div>
 
@@ -997,8 +1096,8 @@ export function MoodboardStudio() {
               Collaboration
             </p>
             <p className="mt-3 text-sm leading-7 text-white/76">
-              Shared boards, presence cursors, and real sync should sit on Supabase
-              auth, storage, and realtime channels next.
+              Google auth is live. Shared boards, presence cursors, and true realtime
+              sync are the next backend step.
             </p>
           </div>
         </aside>
@@ -1500,7 +1599,7 @@ export function MoodboardStudio() {
 
           <PanelSection eyebrow="Sync plan" title="Backend-ready next steps">
             <div className="space-y-3 text-sm leading-7 text-[var(--muted)]">
-              <p>Google sign-in should be wired with Supabase Auth.</p>
+              <p>Google sign-in is now wired with Supabase Auth.</p>
               <p>Boards, layers, and comments should live in Postgres with row-level security.</p>
               <p>Uploads belong in Supabase Storage, then realtime presence can mirror Figma-like collaboration.</p>
             </div>
