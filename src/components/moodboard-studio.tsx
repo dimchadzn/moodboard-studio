@@ -30,6 +30,11 @@ import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/clie
 
 const STORAGE_KEY = "muse-board-state-v1";
 
+type MoodboardStudioProps = {
+  initialUser: User | null;
+  isSupabaseConfigured: boolean;
+};
+
 type PointerAction =
   | {
       type: "pan";
@@ -72,6 +77,16 @@ function clamp(value: number, min: number, max: number) {
 
 function createId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
+}
+
+function getInitials(value: string) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((part) => part[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
 }
 
 function formatUpdatedAt(value: string) {
@@ -123,60 +138,17 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-function getInitials(name: string) {
-  return name
-    .split(" ")
-    .map((part) => part[0])
-    .join("")
-    .slice(0, 2)
-    .toUpperCase();
-}
-
-function roundNumber(value: number) {
-  return Math.round(value * 10) / 10;
-}
-
-function ViewerBadge({
-  children,
-  tone = "default",
-}: {
-  children: ReactNode;
-  tone?: "default" | "accent" | "muted";
-}) {
-  const toneClass =
-    tone === "accent"
-      ? "border border-[var(--accent-soft)] bg-[var(--accent-soft)] text-[var(--accent)]"
-      : tone === "muted"
-        ? "border border-white/8 bg-white/4 text-[var(--muted)]"
-        : "border border-white/8 bg-white/6 text-[var(--foreground)]";
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-3 py-1 text-[10px] font-semibold tracking-[0.18em] uppercase ${toneClass}`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function PanelSection({
-  eyebrow,
-  title,
+function SidebarSection({
+  label,
   children,
 }: {
-  eyebrow: string;
-  title: string;
+  label: string;
   children: ReactNode;
 }) {
   return (
-    <section className="rounded-[18px] border border-white/8 bg-[var(--panel-strong)] p-4">
-      <div className="mb-3">
-        <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">
-          {eyebrow}
-        </p>
-        <h3 className="mt-1 text-sm font-semibold text-[var(--foreground)]">
-          {title}
-        </h3>
+    <section className="border-t border-white/8 pt-4 first:border-t-0 first:pt-0">
+      <div className="mb-3 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+        {label}
       </div>
       {children}
     </section>
@@ -192,22 +164,71 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.18em] text-[var(--muted)]">
+      <div className="mb-2 font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">
         {label}
-      </span>
+      </div>
       {children}
     </label>
   );
 }
 
-function formatItemType(type: BoardItem["type"]) {
-  return type === "image" ? "Image frame" : "Text note";
+function ActionButton({
+  children,
+  onClick,
+  disabled,
+  active = false,
+}: {
+  children: ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={`inline-flex h-9 items-center justify-center border px-3 text-sm transition ${
+        active
+          ? "border-white/18 bg-white/12 text-white"
+          : "border-white/10 bg-white/4 text-[var(--foreground)] hover:bg-white/8"
+      } disabled:cursor-not-allowed disabled:opacity-45`}
+    >
+      {children}
+    </button>
+  );
 }
 
-type MoodboardStudioProps = {
-  initialUser: User | null;
-  isSupabaseConfigured: boolean;
-};
+function ToolButton({
+  label,
+  short,
+  onClick,
+  active = false,
+}: {
+  label: string;
+  short: string;
+  onClick: () => void;
+  active?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={label}
+      className={`flex h-11 w-11 items-center justify-center border text-xs font-medium transition ${
+        active
+          ? "border-white/20 bg-white/12 text-white"
+          : "border-white/10 bg-white/4 text-[var(--muted)] hover:bg-white/8 hover:text-white"
+      }`}
+    >
+      {short}
+    </button>
+  );
+}
+
+function formatItemType(type: BoardItem["type"]) {
+  return type === "image" ? "Image" : "Text";
+}
 
 export function MoodboardStudio({
   initialUser,
@@ -238,10 +259,6 @@ export function MoodboardStudio({
     currentUser?.user_metadata?.name ??
     currentUser?.email?.split("@")[0] ??
     appState.userName;
-  const currentBoardLink =
-    typeof window === "undefined"
-      ? `https://moodboard-studio-ochre.vercel.app/?board=${appState.activeWorkspaceId}`
-      : `${window.location.origin}/?board=${appState.activeWorkspaceId}`;
 
   const activeWorkspace =
     appState.workspaces.find(
@@ -249,7 +266,7 @@ export function MoodboardStudio({
     ) ?? appState.workspaces[0];
 
   const selectedItem =
-    activeWorkspace?.items.find((item) => item.id === appState.selectedItemId) ?? null;
+    activeWorkspace.items.find((item) => item.id === appState.selectedItemId) ?? null;
 
   const filteredWorkspaces = useMemo(() => {
     const query = deferredWorkspaceQuery.trim().toLowerCase();
@@ -264,6 +281,18 @@ export function MoodboardStudio({
       );
     });
   }, [appState.workspaces, deferredWorkspaceQuery]);
+
+  const workspaceImages = activeWorkspace.items.filter(
+    (item): item is ImageItem => item.type === "image",
+  );
+  const workspaceTexts = activeWorkspace.items.filter(
+    (item): item is TextItem => item.type === "text",
+  );
+
+  const currentBoardLink =
+    typeof window === "undefined"
+      ? `https://moodboard-studio-ochre.vercel.app/?board=${activeWorkspace.id}`
+      : `${window.location.origin}/?board=${activeWorkspace.id}`;
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -327,34 +356,33 @@ export function MoodboardStudio({
               }
 
               if (action.type === "move") {
-                const nextX = clamp(
-                  action.originX + (event.clientX - action.startClientX) / action.zoom,
-                  40,
-                  BOARD_SIZE.width - action.itemWidth - 40,
-                );
-                const nextY = clamp(
-                  action.originY + (event.clientY - action.startClientY) / action.zoom,
-                  40,
-                  BOARD_SIZE.height - action.itemHeight - 40,
-                );
-                return { ...item, x: nextX, y: nextY };
+                return {
+                  ...item,
+                  x: clamp(
+                    action.originX + (event.clientX - action.startClientX) / action.zoom,
+                    40,
+                    BOARD_SIZE.width - action.itemWidth - 40,
+                  ),
+                  y: clamp(
+                    action.originY + (event.clientY - action.startClientY) / action.zoom,
+                    40,
+                    BOARD_SIZE.height - action.itemHeight - 40,
+                  ),
+                };
               }
-
-              const nextWidth = clamp(
-                action.originWidth + (event.clientX - action.startClientX) / action.zoom,
-                action.minWidth,
-                BOARD_SIZE.width - action.itemX - 40,
-              );
-              const nextHeight = clamp(
-                action.originHeight + (event.clientY - action.startClientY) / action.zoom,
-                action.minHeight,
-                BOARD_SIZE.height - action.itemY - 40,
-              );
 
               return {
                 ...item,
-                width: nextWidth,
-                height: nextHeight,
+                width: clamp(
+                  action.originWidth + (event.clientX - action.startClientX) / action.zoom,
+                  action.minWidth,
+                  BOARD_SIZE.width - action.itemX - 40,
+                ),
+                height: clamp(
+                  action.originHeight + (event.clientY - action.startClientY) / action.zoom,
+                  action.minHeight,
+                  BOARD_SIZE.height - action.itemY - 40,
+                ),
               };
             }),
           };
@@ -411,7 +439,7 @@ export function MoodboardStudio({
 
   function getViewportCenter() {
     const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect || !activeWorkspace) {
+    if (!rect) {
       return { x: 1200, y: 800 };
     }
 
@@ -431,7 +459,7 @@ export function MoodboardStudio({
 
   function getWorldPoint(clientX: number, clientY: number) {
     const rect = canvasRef.current?.getBoundingClientRect();
-    if (!rect || !activeWorkspace) {
+    if (!rect) {
       return getViewportCenter();
     }
 
@@ -460,13 +488,13 @@ export function MoodboardStudio({
           id,
           type: "text",
           text: "New note",
-          x: point.x - 130,
-          y: point.y - 55,
-          width: 260,
-          height: 110,
+          x: point.x - 140,
+          y: point.y - 50,
+          width: 280,
+          height: 100,
           zIndex: workspace.items.length + 1,
-          color: "#221d17",
-          fontSize: 40,
+          color: "#f3f5f7",
+          fontSize: 38,
           weight: 700,
           letterSpacing: -1.1,
           align: "left",
@@ -504,8 +532,8 @@ export function MoodboardStudio({
         {
           ...selectedItem,
           id: duplicateId,
-          x: clamp(selectedItem.x + 60, 40, BOARD_SIZE.width - selectedItem.width - 40),
-          y: clamp(selectedItem.y + 60, 40, BOARD_SIZE.height - selectedItem.height - 40),
+          x: clamp(selectedItem.x + 56, 40, BOARD_SIZE.width - selectedItem.width - 40),
+          y: clamp(selectedItem.y + 56, 40, BOARD_SIZE.height - selectedItem.height - 40),
           zIndex: workspace.items.length + 1,
         },
       ],
@@ -560,9 +588,9 @@ export function MoodboardStudio({
     const id = createId("workspace");
     const workspace: Workspace = {
       id,
-      name: `Untitled board ${appState.workspaces.length + 1}`,
-      description: "Fresh space for a new mood direction.",
-      accent: "#6f8b79",
+      name: `Untitled ${appState.workspaces.length + 1}`,
+      description: "New board",
+      accent: "#c7ccd4",
       shared: false,
       collaborators: [getInitials(currentUserName)],
       updatedAt: new Date().toISOString(),
@@ -571,16 +599,16 @@ export function MoodboardStudio({
         {
           id: createId("text"),
           type: "text",
-          text: "Drop references here",
-          x: 1120,
+          text: "Drop references",
+          x: 1080,
           y: 420,
-          width: 500,
-          height: 160,
+          width: 480,
+          height: 140,
           zIndex: 1,
-          color: "#393129",
-          fontSize: 58,
+          color: "#f3f5f7",
+          fontSize: 54,
           weight: 800,
-          letterSpacing: -1.9,
+          letterSpacing: -1.8,
           align: "left",
         },
       ],
@@ -610,9 +638,7 @@ export function MoodboardStudio({
     const redirectTo = `${window.location.origin}/auth/callback`;
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: {
-        redirectTo,
-      },
+      options: { redirectTo },
     });
 
     if (error) {
@@ -640,17 +666,11 @@ export function MoodboardStudio({
   }
 
   async function handleCopyBoardLink() {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const boardUrl = `${window.location.origin}/?board=${activeWorkspace.id}`;
-
     try {
-      await navigator.clipboard.writeText(boardUrl);
+      await navigator.clipboard.writeText(currentBoardLink);
       setShareNotice("Link copied.");
     } catch {
-      setShareNotice(boardUrl);
+      setShareNotice(currentBoardLink);
     }
   }
 
@@ -698,15 +718,15 @@ export function MoodboardStudio({
       type: "image",
       src,
       label: file.name.replace(/\.[^.]+$/, ""),
-      x: clamp(center.x - 210 + index * 42, 40, BOARD_SIZE.width - 460),
-      y: clamp(center.y - 220 + index * 34, 40, BOARD_SIZE.height - 600),
+      x: clamp(center.x - 220 + index * 48, 40, BOARD_SIZE.width - 460),
+      y: clamp(center.y - 220 + index * 32, 40, BOARD_SIZE.height - 600),
       width: 380,
       height: 480,
       zIndex: activeWorkspace.items.length + index + 1,
       cropX: 0,
       cropY: 0,
       cropScale: 1,
-      borderRadius: 26,
+      borderRadius: 8,
       shadow: 28,
     }));
 
@@ -728,7 +748,7 @@ export function MoodboardStudio({
   }
 
   function handleCanvasPointerDown(event: React.PointerEvent<HTMLDivElement>) {
-    if (!activeWorkspace || event.button !== 0) {
+    if (event.button !== 0) {
       return;
     }
 
@@ -753,7 +773,7 @@ export function MoodboardStudio({
     event: React.PointerEvent<HTMLDivElement>,
     item: BoardItem,
   ) {
-    if (!activeWorkspace || event.button !== 0) {
+    if (event.button !== 0) {
       return;
     }
 
@@ -794,10 +814,6 @@ export function MoodboardStudio({
   }
 
   function handleCanvasWheel(event: React.WheelEvent<HTMLDivElement>) {
-    if (!activeWorkspace) {
-      return;
-    }
-
     event.preventDefault();
 
     const rect = canvasRef.current?.getBoundingClientRect();
@@ -846,10 +862,6 @@ export function MoodboardStudio({
   }
 
   function updateZoom(nextZoom: number) {
-    if (!activeWorkspace) {
-      return;
-    }
-
     const rect = canvasRef.current?.getBoundingClientRect();
     if (!rect) {
       return;
@@ -902,152 +914,109 @@ export function MoodboardStudio({
     addTextAtCenter(getWorldPoint(event.clientX, event.clientY));
   }
 
-  const workspaceImages = activeWorkspace.items.filter(
-    (item): item is ImageItem => item.type === "image",
-  );
-  const workspaceTexts = activeWorkspace.items.filter(
-    (item): item is TextItem => item.type === "text",
-  );
-
   if (!currentUser) {
     return (
-      <main className="relative flex min-h-screen overflow-hidden bg-[linear-gradient(180deg,#090b0e_0%,#0c0f14_100%)] px-5 py-6 text-[var(--foreground)] sm:px-8">
-        <div className="relative mx-auto grid w-full max-w-[1440px] gap-4 lg:grid-cols-[0.82fr_1.18fr]">
-          <section className="flex flex-col justify-between rounded-[12px] border border-white/8 bg-[rgba(12,14,18,0.96)] p-8 shadow-[0_20px_70px_rgba(0,0,0,0.35)] md:p-10">
-            <ViewerBadge tone="accent">Muse Board</ViewerBadge>
-            <h1 className="mt-6 max-w-xl text-5xl font-medium tracking-[-0.065em] sm:text-6xl">
-              Minimal moodboards. Precise canvas. No ornamental UI.
+      <main className="grid min-h-screen bg-[var(--background)] text-[var(--foreground)] lg:grid-cols-[420px_1fr]">
+        <section className="flex items-center justify-center border-b border-white/8 p-8 lg:border-b-0 lg:border-r">
+          <div className="w-full max-w-sm">
+            <div className="font-mono text-[11px] uppercase tracking-[0.24em] text-[var(--muted)]">
+              Muse Board
+            </div>
+            <h1 className="mt-5 text-4xl font-medium tracking-[-0.07em]">
+              Sign in.
             </h1>
-            <p className="mt-5 max-w-lg text-base leading-7 text-[var(--muted)]">
-              Built around the same editor instincts people like in pro design tools:
-              quiet chrome, direct manipulation, and a canvas that stays out of the way.
+            <p className="mt-3 text-sm leading-7 text-[var(--muted)]">
+              Shared boards. Quiet UI. Direct canvas editing.
             </p>
-
-            <div className="mt-8 grid gap-3 sm:grid-cols-3">
-              <FeatureStat label="Canvas" value="Pan and zoom" />
-              <FeatureStat label="Frames" value="Drop and crop" />
-              <FeatureStat label="Sharing" value="Google sign-in" />
-            </div>
-
-            <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-              <button
-                type="button"
-                onClick={() => void handleSignIn()}
-                disabled={isAuthLoading}
-                className="inline-flex items-center justify-center rounded-full bg-[var(--foreground)] px-6 py-3.5 text-sm font-medium text-[#0a0c0f] transition hover:bg-white disabled:opacity-60"
-              >
+            <div className="mt-8 flex gap-3">
+              <ActionButton onClick={() => void handleSignIn()} disabled={isAuthLoading}>
                 {isAuthLoading ? "Connecting..." : "Continue with Google"}
-              </button>
-              <div className="rounded-[8px] border border-white/8 bg-white/4 px-5 py-3 text-sm text-[var(--muted)]">
-                {isSupabaseConfigured
-                  ? "Google OAuth is connected through Supabase."
-                  : "Add Supabase env vars to activate Google login."}
-              </div>
+              </ActionButton>
             </div>
-
             {authError ? (
-              <div className="mt-4 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent)]">
+              <div className="mt-4 border border-white/10 bg-white/4 px-4 py-3 text-sm text-[var(--foreground)]">
                 {authError}
               </div>
             ) : null}
+          </div>
+        </section>
 
-            <div className="mt-10 grid gap-3 text-sm text-[var(--muted)]">
-              <p>Core flow</p>
-              <div className="grid gap-2">
-                <div className="rounded-[8px] border border-white/8 bg-white/3 px-4 py-3">Drop images directly onto the canvas.</div>
-                <div className="rounded-[8px] border border-white/8 bg-white/3 px-4 py-3">Resize, crop, and annotate without leaving the board.</div>
-                <div className="rounded-[8px] border border-white/8 bg-white/3 px-4 py-3">Switch between workspaces for different moodboard directions.</div>
+        <section className="hidden p-6 lg:block">
+          <div className="grid h-full grid-rows-[44px_1fr] border border-white/8 bg-[var(--panel-strong)]">
+            <div className="flex items-center justify-between border-b border-white/8 px-4">
+              <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+                Editor
               </div>
+              <div className="text-xs text-[var(--muted)]">Minimal dark mode</div>
             </div>
-          </section>
-
-            <section className="rounded-[10px] border border-white/8 bg-[rgba(12,14,18,0.96)] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.32)]">
-            <div className="mb-4 flex items-center justify-between">
-              <ViewerBadge tone="muted">Live editor preview</ViewerBadge>
-              <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
-                neutral graphite
-              </span>
-            </div>
-            <div className="overflow-hidden rounded-[10px] border border-white/8 bg-[#0f1318]">
-              <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-2.5 w-2.5 rounded-full bg-white/28" />
-                  <div className="h-2.5 w-2.5 rounded-full bg-white/18" />
-                  <div className="h-2.5 w-2.5 rounded-full bg-white/12" />
-                </div>
-                <div className="rounded-[6px] border border-white/8 bg-white/4 px-3 py-1 text-[11px] text-[var(--muted)]">
-                  Brand Sprint
+            <div className="grid grid-cols-[56px_220px_1fr_280px]">
+              <div className="border-r border-white/8 bg-[#0c0f13] p-2">
+                <div className="grid gap-2">
+                  {["V", "T", "F", "S"].map((tool) => (
+                    <div
+                      key={tool}
+                      className="flex h-10 w-10 items-center justify-center border border-white/8 bg-white/4 text-xs text-[var(--muted)]"
+                    >
+                      {tool}
+                    </div>
+                  ))}
                 </div>
               </div>
-              <div className="grid min-h-[560px] grid-cols-[84px_1fr_280px]">
-                <div className="border-r border-white/8 bg-[#0c0f13] p-3">
-                  <div className="space-y-2">
-                    {["+", "T", "F", "S"].map((tool) => (
-                      <div
-                        key={tool}
-                        className="flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/8 bg-white/4 text-sm text-[var(--muted)]"
-                      >
-                        {tool}
-                      </div>
-                    ))}
-                  </div>
+              <div className="border-r border-white/8 bg-[#0f1217] p-3">
+                <div className="space-y-2">
+                  {["Brand Sprint", "Interior Direction", "Campaign Shoot"].map((name, index) => (
+                    <div
+                      key={name}
+                      className={`border px-3 py-3 text-sm ${
+                        index === 0
+                          ? "border-white/16 bg-white/8 text-white"
+                          : "border-white/8 bg-transparent text-[var(--muted)]"
+                      }`}
+                    >
+                      {name}
+                    </div>
+                  ))}
                 </div>
-                <div className="relative border-r border-white/8 bg-[#0b0f14] p-6">
-                  <div className="absolute inset-0 opacity-100">
-                    <div className="canvas-grid canvas-dots h-full w-full" />
-                  </div>
-                  <div className="relative z-10 h-full">
-                    <div className="absolute left-14 top-10 max-w-[11ch] text-5xl font-semibold tracking-[-0.06em] text-white">
-                      Spring reset
-                    </div>
-                    <div className="absolute left-[340px] top-12 h-[340px] w-[260px] overflow-hidden rounded-[8px] border border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
-                      <img
-                        src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=900&q=80"
-                        alt="Editorial preview"
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <div className="absolute left-[640px] top-[180px] h-[220px] w-[180px] overflow-hidden rounded-[8px] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
-                      <img
-                        src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80"
-                        alt="Portrait preview"
-                        className="h-full w-full object-cover"
-                      />
-                    </div>
-                    <div className="absolute left-16 top-[360px] rounded-[8px] border border-white/8 bg-[rgba(17,21,27,0.78)] px-5 py-4 text-sm leading-7 text-[var(--muted)] backdrop-blur">
-                      Keep the board spare, quiet, and focused on the references.
-                    </div>
-                  </div>
+              </div>
+              <div className="relative border-r border-white/8 bg-[#0a0d11]">
+                <div className="canvas-grid canvas-dots absolute inset-0" />
+                <div className="absolute left-14 top-14 text-5xl font-medium tracking-[-0.07em] text-white">
+                  Spring reset
                 </div>
-                <div className="bg-[#0e1217] p-4">
-                  <div className="mb-4 text-sm font-medium text-white">Inspector</div>
-                  <div className="space-y-3">
-                    <div className="rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[var(--muted)]">
-                      Selected frame
-                    </div>
-                    <div className="space-y-2 rounded-[8px] border border-white/8 bg-white/3 p-4">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">Crop</div>
-                      <div className="h-2 rounded-full bg-white/8" />
-                      <div className="h-2 rounded-full bg-white/8" />
-                      <div className="h-2 rounded-full bg-white/8" />
-                    </div>
-                    <div className="space-y-2 rounded-[8px] border border-white/8 bg-white/3 p-4">
-                      <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">Style</div>
-                      <div className="h-10 rounded-[8px] border border-white/8 bg-white/4" />
-                      <div className="h-10 rounded-[8px] border border-white/8 bg-white/4" />
-                    </div>
-                  </div>
+                <div className="absolute left-[320px] top-10 h-[340px] w-[250px] overflow-hidden border border-white/10">
+                  <img
+                    src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=900&q=80"
+                    alt="Preview 1"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+                <div className="absolute left-[620px] top-[180px] h-[220px] w-[170px] overflow-hidden border border-white/10">
+                  <img
+                    src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80"
+                    alt="Preview 2"
+                    className="h-full w-full object-cover"
+                  />
+                </div>
+              </div>
+              <div className="bg-[#0f1217] p-3">
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Properties
+                </div>
+                <div className="mt-4 space-y-2">
+                  <div className="h-10 border border-white/8 bg-white/4" />
+                  <div className="h-10 border border-white/8 bg-white/4" />
+                  <div className="h-10 border border-white/8 bg-white/4" />
                 </div>
               </div>
             </div>
-          </section>
-        </div>
+          </div>
+        </section>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen bg-[linear-gradient(180deg,#090b0e_0%,#0c0f14_100%)] px-4 py-4 text-[var(--foreground)] sm:px-5">
+    <main className="h-screen overflow-hidden bg-[var(--background)] text-[var(--foreground)]">
       <input
         ref={fileInputRef}
         type="file"
@@ -1057,390 +1026,271 @@ export function MoodboardStudio({
         onChange={handleFileSelection}
       />
 
-      <div className="mb-4 flex items-center justify-between rounded-[10px] border border-white/8 bg-[rgba(14,17,22,0.96)] px-4 py-3 shadow-[0_16px_60px_rgba(0,0,0,0.28)]">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <ViewerBadge tone="accent">Muse Board</ViewerBadge>
-            <ViewerBadge tone="muted">Editor</ViewerBadge>
-          </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">
-            Moodboard studio
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-2 text-right">
-          <div>
-            <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
-              Sync
-            </p>
-            <p className="text-sm font-semibold">
-              Signed in as {currentUser.email ?? currentUserName}
-            </p>
-          </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/6 text-sm font-semibold text-white">
-            {getInitials(currentUserName)}
-          </div>
-          <ToolbarButton onClick={() => setIsShareOpen(true)}>Share</ToolbarButton>
-          <ToolbarButton onClick={() => void handleSignOut()}>
-            {isAuthLoading ? "..." : "Sign out"}
-          </ToolbarButton>
-        </div>
-      </div>
-
-      <div className="grid min-h-[calc(100vh-8.75rem)] gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
-        <aside className="rounded-[10px] border border-white/8 bg-[rgba(14,17,22,0.96)] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.22)]">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">
-                Workspaces
-              </p>
-              <h2 className="mt-1 text-lg font-medium">Boards</h2>
+      <div className="grid h-full grid-rows-[48px_1fr]">
+        <header className="flex items-center justify-between border-b border-white/8 bg-[var(--panel-strong)] px-4">
+          <div className="flex items-center gap-4">
+            <div className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">
+              Muse Board
             </div>
-            <button
-              type="button"
-              onClick={handleCreateWorkspace}
-              className="rounded-[8px] border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition hover:bg-white/10"
-            >
-              New
-            </button>
+            <div className="text-sm text-[var(--muted)]">{activeWorkspace.name}</div>
           </div>
 
-          <Field label="Find a board">
-            <input
-              value={workspaceQuery}
-              onChange={(event) => setWorkspaceQuery(event.target.value)}
-              placeholder="Search by title or mood"
-              className="w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/16"
-            />
-          </Field>
-
-          <div className="mt-4 space-y-3">
-            {filteredWorkspaces.map((workspace) => {
-              const isActive = workspace.id === activeWorkspace.id;
-              return (
-                <button
-                  key={workspace.id}
-                  type="button"
-                  onClick={() => handleWorkspaceSwitch(workspace.id)}
-                  className={`w-full rounded-[8px] border p-4 text-left transition ${
-                    isActive
-                      ? "border-white/12 bg-white/8"
-                      : "border-transparent bg-transparent hover:border-white/8 hover:bg-white/4"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold">{workspace.name}</p>
-                      <p className="mt-1 text-sm leading-6 text-[var(--muted)]">
-                        {workspace.description}
-                      </p>
-                    </div>
-                    <span
-                      className="mt-1 h-3 w-3 rounded-[3px]"
-                      style={{ backgroundColor: workspace.accent }}
-                    />
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-between text-xs text-[var(--muted)]">
-                    <span>{workspace.items.length} layers</span>
-                    <span>{formatUpdatedAt(workspace.updatedAt)}</span>
-                  </div>
-                </button>
-              );
-            })}
-
-            {filteredWorkspaces.length === 0 ? (
-              <div className="rounded-[8px] border border-dashed border-white/10 bg-white/3 px-4 py-8 text-center text-sm text-[var(--muted)]">
-                No workspace matches that search yet.
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mt-5 rounded-[8px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4 text-white">
-            <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/60">
-              Collaboration
-            </p>
-            <p className="mt-3 text-sm leading-7 text-white/76">
-              Share links and invite prep are here. Realtime multi-user sync is the next backend step.
-            </p>
-          </div>
-        </aside>
-
-        <section className="flex min-h-[720px] flex-col rounded-[10px] border border-white/8 bg-[rgba(13,16,21,0.96)] shadow-[0_16px_60px_rgba(0,0,0,0.24)]">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <ViewerBadge tone="default">
-                  {activeWorkspace.shared ? "Shared board" : "Private board"}
-                </ViewerBadge>
-                <ViewerBadge tone="muted">{activeWorkspace.name}</ViewerBadge>
-              </div>
-              <p className="mt-2 text-sm leading-7 text-[var(--muted)]">
-                {activeWorkspace.description}
-              </p>
+          <div className="flex items-center gap-2">
+            <ActionButton onClick={() => fileInputRef.current?.click()}>Upload</ActionButton>
+            <ActionButton onClick={() => addTextAtCenter()}>Text</ActionButton>
+            <ActionButton onClick={() => setIsShareOpen(true)}>Share</ActionButton>
+            <div className="flex h-8 w-8 items-center justify-center border border-white/10 bg-white/6 text-xs font-medium">
+              {getInitials(currentUserName)}
             </div>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <ToolbarButton onClick={() => fileInputRef.current?.click()}>
-                Upload images
-              </ToolbarButton>
-              <ToolbarButton onClick={() => addTextAtCenter()}>Add text</ToolbarButton>
-              <ToolbarButton
-                onClick={duplicateSelectedItem}
-                disabled={!selectedItem}
-              >
-                Duplicate
-              </ToolbarButton>
-              <ToolbarButton
-                onClick={() => setIsShareOpen(true)}
-              >
-                Share board
-              </ToolbarButton>
-            </div>
+            <ActionButton onClick={() => void handleSignOut()}>
+              {isAuthLoading ? "..." : "Sign out"}
+            </ActionButton>
           </div>
+        </header>
 
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <div className="flex -space-x-2">
-                {activeWorkspace.collaborators.map((person, index) => (
-                  <div
-                    key={`${person}-${index}`}
-                    className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-white/10 bg-white/6 text-xs font-semibold text-white"
-                  >
-                    {person}
-                  </div>
-                ))}
-              </div>
-              <p className="text-sm text-[var(--muted)]">
-                Shared with {activeWorkspace.collaborators.length} collaborators
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => updateZoom(activeWorkspace.view.zoom - 0.1)}
-                className="h-10 w-10 rounded-[8px] border border-white/10 bg-white/5 text-lg"
-              >
-                -
-              </button>
-              <div className="min-w-20 rounded-[8px] border border-white/10 bg-white/5 px-4 py-2 text-center text-sm font-semibold">
-                {Math.round(activeWorkspace.view.zoom * 100)}%
-              </div>
-              <button
-                type="button"
-                onClick={() => updateZoom(activeWorkspace.view.zoom + 0.1)}
-                className="h-10 w-10 rounded-[8px] border border-white/10 bg-white/5 text-lg"
-              >
-                +
-              </button>
-              <ToolbarButton
+        <div className="grid min-h-0 grid-cols-[56px_232px_minmax(0,1fr)_280px]">
+          <aside className="border-r border-white/8 bg-[#0c0f13] p-2">
+            <div className="grid gap-2">
+              <ToolButton label="Select" short="V" onClick={() => setShareNotice(null)} active />
+              <ToolButton label="Text" short="T" onClick={() => addTextAtCenter()} />
+              <ToolButton label="Upload" short="F" onClick={() => fileInputRef.current?.click()} />
+              <ToolButton
+                label="Reset view"
+                short="R"
                 onClick={() =>
                   patchActiveWorkspace(
                     (workspace) => ({ ...workspace, view: defaultView }),
                     { touchTimestamp: false },
                   )
                 }
-              >
-                Reset view
-              </ToolbarButton>
+              />
             </div>
-          </div>
+          </aside>
 
-          <div
-            ref={canvasRef}
-            onPointerDown={handleCanvasPointerDown}
-            onWheel={handleCanvasWheel}
-            onDrop={handleDrop}
-            onDragOver={(event) => event.preventDefault()}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDoubleClick={handleDoubleClick}
-            className="relative mx-3 mb-3 flex-1 overflow-hidden rounded-[8px] border border-white/8 bg-[#0a0d11]"
-          >
-            <div className="pointer-events-none absolute inset-x-5 top-5 z-20 flex flex-wrap gap-2">
-              <ViewerBadge tone="muted">Drag empty space to pan</ViewerBadge>
-              <ViewerBadge tone="muted">Pinch or Ctrl-scroll to zoom</ViewerBadge>
-              <ViewerBadge tone="muted">Double-click to add text</ViewerBadge>
+          <aside className="border-r border-white/8 bg-[#0f1217] p-4">
+            <SidebarSection label="Boards">
+              <div className="space-y-2">
+                <input
+                  value={workspaceQuery}
+                  onChange={(event) => setWorkspaceQuery(event.target.value)}
+                  placeholder="Search"
+                  className="w-full border border-white/8 bg-white/4 px-3 py-2 text-sm text-white outline-none placeholder:text-white/28"
+                />
+                <ActionButton onClick={handleCreateWorkspace}>New board</ActionButton>
+              </div>
+            </SidebarSection>
+
+            <SidebarSection label="List">
+              <div className="space-y-1">
+                {filteredWorkspaces.map((workspace) => {
+                  const isActive = workspace.id === activeWorkspace.id;
+                  return (
+                    <button
+                      key={workspace.id}
+                      type="button"
+                      onClick={() => handleWorkspaceSwitch(workspace.id)}
+                      className={`flex w-full items-center justify-between border px-3 py-3 text-left text-sm transition ${
+                        isActive
+                          ? "border-white/16 bg-white/8 text-white"
+                          : "border-transparent bg-transparent text-[var(--muted)] hover:border-white/8 hover:bg-white/4 hover:text-white"
+                      }`}
+                    >
+                      <div>
+                        <div>{workspace.name}</div>
+                        <div className="mt-1 text-xs text-[var(--muted)]">
+                          {formatUpdatedAt(workspace.updatedAt)}
+                        </div>
+                      </div>
+                      <div className="h-2 w-2 bg-white/28" />
+                    </button>
+                  );
+                })}
+              </div>
+            </SidebarSection>
+
+            <SidebarSection label="Board">
+              <div className="space-y-2 text-sm text-[var(--muted)]">
+                <div>{activeWorkspace.description}</div>
+                <div>{activeWorkspace.items.length} layers</div>
+                <div>{activeWorkspace.shared ? "Shared" : "Private"}</div>
+              </div>
+            </SidebarSection>
+          </aside>
+
+          <section className="grid min-h-0 grid-rows-[44px_1fr_34px] bg-[#0a0d11]">
+            <div className="flex items-center justify-between border-b border-white/8 px-4 text-sm text-[var(--muted)]">
+              <div className="flex items-center gap-3">
+                <span>{activeWorkspace.name}</span>
+                <span>{activeWorkspace.shared ? "Shared" : "Private"}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <ActionButton onClick={() => duplicateSelectedItem()} disabled={!selectedItem}>
+                  Duplicate
+                </ActionButton>
+                <ActionButton onClick={() => removeSelectedItem()} disabled={!selectedItem}>
+                  Delete
+                </ActionButton>
+              </div>
             </div>
 
             <div
-              className="pointer-events-none absolute inset-0 opacity-80"
-              style={{
-                background:
-                  "linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0))",
-              }}
-            />
-
-            <div
-              className="absolute left-0 top-0"
-              style={{
-                width: BOARD_SIZE.width,
-                height: BOARD_SIZE.height,
-                transform: `translate(${activeWorkspace.view.panX}px, ${activeWorkspace.view.panY}px) scale(${activeWorkspace.view.zoom})`,
-                transformOrigin: "0 0",
-              }}
+              ref={canvasRef}
+              onPointerDown={handleCanvasPointerDown}
+              onWheel={handleCanvasWheel}
+              onDrop={handleDrop}
+              onDragOver={(event) => event.preventDefault()}
+              onDragEnter={handleDragEnter}
+              onDragLeave={handleDragLeave}
+              onDoubleClick={handleDoubleClick}
+              className="relative min-h-0 overflow-hidden"
             >
               <div className="canvas-grid canvas-dots absolute inset-0" />
 
-              {activeWorkspace.items
-                .toSorted((left, right) => left.zIndex - right.zIndex)
-                .map((item) => {
-                  const isSelected = item.id === selectedItem?.id;
-                  return (
-                    <div
-                      key={item.id}
-                      data-item-id={item.id}
-                      onPointerDown={(event) => handleItemPointerDown(event, item)}
-                      className="group absolute transition-shadow"
-                      style={{
-                        left: item.x,
-                        top: item.y,
-                        width: item.width,
-                        height: item.height,
-                        cursor: "grab",
-                      }}
-                    >
-                      {item.type === "image" ? (
-                        <div
-                          className={`relative h-full overflow-hidden border ${
-                            isSelected
-                              ? "border-[3px] border-[var(--accent)]"
-                              : "border-white/10"
-                          }`}
-                          style={{
-                            borderRadius: item.borderRadius,
-                            boxShadow: `0 ${Math.round(item.shadow / 2)}px ${item.shadow}px rgba(0, 0, 0, 0.34)`,
-                          }}
-                        >
-                          <img
-                            src={item.src}
-                            alt={item.label}
-                            className="pointer-events-none h-full w-full object-cover"
-                            style={{
-                              transform: `translate(${item.cropX}px, ${item.cropY}px) scale(${item.cropScale})`,
-                              transformOrigin: "center",
-                            }}
-                          />
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/35 to-transparent px-4 py-3 text-sm font-semibold text-white opacity-0 transition group-hover:opacity-100">
-                            {item.label}
-                          </div>
-                        </div>
-                      ) : (
-                        <div
-                          className={`h-full rounded-[8px] border ${
-                            isSelected
-                              ? "border-[3px] border-[var(--accent)] bg-[rgba(15,19,25,0.92)]"
-                              : "border-white/8 bg-[rgba(17,21,27,0.82)]"
-                          } px-5 py-4 shadow-[0_20px_45px_rgba(0,0,0,0.22)] backdrop-blur`}
-                        >
+              <div
+                className="absolute left-0 top-0"
+                style={{
+                  width: BOARD_SIZE.width,
+                  height: BOARD_SIZE.height,
+                  transform: `translate(${activeWorkspace.view.panX}px, ${activeWorkspace.view.panY}px) scale(${activeWorkspace.view.zoom})`,
+                  transformOrigin: "0 0",
+                }}
+              >
+                {activeWorkspace.items
+                  .toSorted((left, right) => left.zIndex - right.zIndex)
+                  .map((item) => {
+                    const isSelected = item.id === selectedItem?.id;
+
+                    return (
+                      <div
+                        key={item.id}
+                        data-item-id={item.id}
+                        onPointerDown={(event) => handleItemPointerDown(event, item)}
+                        className="group absolute"
+                        style={{
+                          left: item.x,
+                          top: item.y,
+                          width: item.width,
+                          height: item.height,
+                          cursor: "grab",
+                        }}
+                      >
+                        {item.type === "image" ? (
                           <div
-                            className="h-full whitespace-pre-wrap"
+                            className={`relative h-full overflow-hidden border ${
+                              isSelected ? "border-[3px] border-white" : "border-white/10"
+                            }`}
                             style={{
-                              color: item.color,
-                              fontSize: item.fontSize,
-                              fontWeight: item.weight,
-                              letterSpacing: `${item.letterSpacing}px`,
-                              lineHeight: 0.95,
-                              textAlign: item.align,
+                              borderRadius: item.borderRadius,
+                              boxShadow: `0 ${Math.round(item.shadow / 2)}px ${item.shadow}px rgba(0, 0, 0, 0.34)`,
                             }}
                           >
-                            {item.text}
+                            <img
+                              src={item.src}
+                              alt={item.label}
+                              className="pointer-events-none h-full w-full object-cover"
+                              style={{
+                                transform: `translate(${item.cropX}px, ${item.cropY}px) scale(${item.cropScale})`,
+                                transformOrigin: "center",
+                              }}
+                            />
+                            <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/45 to-transparent px-3 py-2 text-xs text-white opacity-0 transition group-hover:opacity-100">
+                              {item.label}
+                            </div>
                           </div>
-                        </div>
-                      )}
+                        ) : (
+                          <div
+                            className={`h-full border px-4 py-3 ${
+                              isSelected
+                                ? "border-[3px] border-white bg-[rgba(16,19,24,0.96)]"
+                                : "border-white/8 bg-[rgba(17,21,27,0.88)]"
+                            }`}
+                          >
+                            <div
+                              className="h-full whitespace-pre-wrap"
+                              style={{
+                                color: item.color,
+                                fontSize: item.fontSize,
+                                fontWeight: item.weight,
+                                letterSpacing: `${item.letterSpacing}px`,
+                                lineHeight: 0.95,
+                                textAlign: item.align,
+                              }}
+                            >
+                              {item.text}
+                            </div>
+                          </div>
+                        )}
 
-                      {isSelected ? (
-                        <div
-                          data-handle="resize"
-                          className="absolute bottom-[-9px] right-[-9px] h-5 w-5 rounded-[4px] border-2 border-white bg-[var(--accent)] shadow-[0_10px_20px_rgba(0,0,0,0.16)]"
-                        />
-                      ) : null}
-                    </div>
-                  );
-                })}
+                        {isSelected ? (
+                          <div
+                            data-handle="resize"
+                            className="absolute bottom-[-8px] right-[-8px] h-4 w-4 border-2 border-black bg-white"
+                          />
+                        ) : null}
+                      </div>
+                    );
+                  })}
+              </div>
+
+              {isDraggingFiles ? (
+                <div className="absolute inset-6 z-30 flex items-center justify-center border border-dashed border-white/16 bg-[rgba(10,13,17,0.94)]">
+                  <div className="text-sm text-[var(--muted)]">Drop images</div>
+                </div>
+              ) : null}
             </div>
 
-            {isDraggingFiles ? (
-              <div className="absolute inset-6 z-30 flex items-center justify-center rounded-[8px] border-2 border-dashed border-[var(--accent)] bg-[rgba(10,14,18,0.92)]">
-                <div className="text-center">
-                  <p className="text-xl font-semibold tracking-[-0.03em]">
-                    Drop images into the board
-                  </p>
-                  <p className="mt-2 text-sm text-[var(--muted)]">
-                    Each file becomes its own resizable, croppable frame.
-                  </p>
-                </div>
+            <div className="flex items-center justify-between border-t border-white/8 px-4 text-xs text-[var(--muted)]">
+              <div className="flex items-center gap-3">
+                <span>{Math.round(activeWorkspace.view.zoom * 100)}%</span>
+                <span>{workspaceImages.length} images</span>
+                <span>{workspaceTexts.length} text</span>
               </div>
-            ) : null}
-          </div>
-        </section>
+              <div className="flex items-center gap-2">
+                <ActionButton onClick={() => updateZoom(activeWorkspace.view.zoom - 0.1)}>
+                  -
+                </ActionButton>
+                <ActionButton onClick={() => updateZoom(activeWorkspace.view.zoom + 0.1)}>
+                  +
+                </ActionButton>
+                <ActionButton
+                  onClick={() =>
+                    patchActiveWorkspace(
+                      (workspace) => ({ ...workspace, view: defaultView }),
+                      { touchTimestamp: false },
+                    )
+                  }
+                >
+                  Reset
+                </ActionButton>
+              </div>
+            </div>
+          </section>
 
-        <aside className="space-y-4 rounded-[10px] border border-white/8 bg-[rgba(14,17,22,0.96)] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.22)]">
-          <PanelSection eyebrow="Inspector" title={selectedItem ? formatItemType(selectedItem.type) : "Board details"}>
-            {selectedItem ? (
-              <div className="space-y-4">
-                <div className="rounded-[8px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent)]">
-                  Selected layer: {selectedItem.type === "image" ? selectedItem.label : "Text block"}
-                </div>
+          <aside className="border-l border-white/8 bg-[#0f1217] p-4">
+            <SidebarSection label="Properties">
+              {selectedItem ? (
+                <div className="space-y-4">
+                  <div className="border border-white/8 bg-white/4 px-3 py-3 text-sm text-[var(--foreground)]">
+                    {formatItemType(selectedItem.type)}
+                  </div>
 
-                {selectedItem.type === "text" ? (
-                  <>
-                    <Field label="Content">
-                      <textarea
-                        value={selectedItem.text}
-                        onChange={(event) =>
-                          patchSelectedItem((item) =>
-                            item.type === "text"
-                              ? { ...item, text: event.target.value }
-                              : item,
-                          )
-                        }
-                        className="min-h-28 w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm leading-7 text-white outline-none placeholder:text-white/28"
-                      />
-                    </Field>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Font size">
-                        <input
-                          type="range"
-                          min={22}
-                          max={110}
-                          value={selectedItem.fontSize}
+                  {selectedItem.type === "text" ? (
+                    <>
+                      <Field label="Text">
+                        <textarea
+                          value={selectedItem.text}
                           onChange={(event) =>
                             patchSelectedItem((item) =>
                               item.type === "text"
-                                ? { ...item, fontSize: Number(event.target.value) }
+                                ? { ...item, text: event.target.value }
                                 : item,
                             )
                           }
-                          className="w-full"
+                          className="min-h-24 w-full border border-white/8 bg-white/4 px-3 py-3 text-sm text-white outline-none"
                         />
                       </Field>
-                      <Field label="Weight">
-                        <input
-                          type="range"
-                          min={500}
-                          max={800}
-                          step={100}
-                          value={selectedItem.weight}
-                          onChange={(event) =>
-                            patchSelectedItem((item) =>
-                              item.type === "text"
-                                ? {
-                                    ...item,
-                                    weight: Number(event.target.value) as TextItem["weight"],
-                                  }
-                                : item,
-                            )
-                          }
-                          className="w-full"
-                        />
-                      </Field>
-                    </div>
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Text color">
+                      <Field label="Color">
                         <input
                           type="color"
                           value={selectedItem.color}
@@ -1451,52 +1301,66 @@ export function MoodboardStudio({
                                 : item,
                             )
                           }
-                          className="h-12 w-full rounded-[8px] border border-white/8 bg-white/4 p-2"
+                          className="h-11 w-full border border-white/8 bg-white/4 p-1"
                         />
                       </Field>
 
-                      <Field label="Alignment">
-                        <div className="grid grid-cols-2 gap-2">
-                          {(["left", "center"] as const).map((align) => (
-                            <button
-                              key={align}
-                              type="button"
-                              onClick={() =>
-                                patchSelectedItem((item) =>
-                                  item.type === "text" ? { ...item, align } : item,
-                                )
-                              }
-                              className={`rounded-[8px] border px-3 py-3 text-sm font-semibold ${
-                                selectedItem.align === align
-                                  ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
-                                  : "border-white/8 bg-white/4"
-                              }`}
-                            >
-                              {align}
-                            </button>
-                          ))}
-                        </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Size">
+                          <input
+                            type="number"
+                            value={Math.round(selectedItem.fontSize)}
+                            onChange={(event) =>
+                              patchSelectedItem((item) =>
+                                item.type === "text"
+                                  ? { ...item, fontSize: Number(event.target.value) || item.fontSize }
+                                  : item,
+                              )
+                            }
+                            className="w-full border border-white/8 bg-white/4 px-3 py-3 text-sm text-white outline-none"
+                          />
+                        </Field>
+                        <Field label="Weight">
+                          <input
+                            type="number"
+                            step={100}
+                            value={selectedItem.weight}
+                            onChange={(event) =>
+                              patchSelectedItem((item) =>
+                                item.type === "text"
+                                  ? {
+                                      ...item,
+                                      weight: clamp(
+                                        Number(event.target.value) || item.weight,
+                                        500,
+                                        800,
+                                      ) as TextItem["weight"],
+                                    }
+                                  : item,
+                              )
+                            }
+                            className="w-full border border-white/8 bg-white/4 px-3 py-3 text-sm text-white outline-none"
+                          />
+                        </Field>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <Field label="Label">
+                        <input
+                          value={selectedItem.label}
+                          onChange={(event) =>
+                            patchSelectedItem((item) =>
+                              item.type === "image"
+                                ? { ...item, label: event.target.value }
+                                : item,
+                            )
+                          }
+                          className="w-full border border-white/8 bg-white/4 px-3 py-3 text-sm text-white outline-none"
+                        />
                       </Field>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <Field label="Image label">
-                      <input
-                        value={selectedItem.label}
-                        onChange={(event) =>
-                          patchSelectedItem((item) =>
-                            item.type === "image"
-                              ? { ...item, label: event.target.value }
-                              : item,
-                          )
-                        }
-                        className="w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none placeholder:text-white/28"
-                      />
-                    </Field>
 
-                    <div className="space-y-3">
-                      <Field label={`Crop X ${roundNumber(selectedItem.cropX)}px`}>
+                      <Field label={`Crop X ${Math.round(selectedItem.cropX)}px`}>
                         <input
                           type="range"
                           min={-140}
@@ -1513,7 +1377,7 @@ export function MoodboardStudio({
                         />
                       </Field>
 
-                      <Field label={`Crop Y ${roundNumber(selectedItem.cropY)}px`}>
+                      <Field label={`Crop Y ${Math.round(selectedItem.cropY)}px`}>
                         <input
                           type="range"
                           min={-140}
@@ -1547,199 +1411,142 @@ export function MoodboardStudio({
                           className="w-full"
                         />
                       </Field>
-                    </div>
+                    </>
+                  )}
 
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Corner radius">
-                        <input
-                          type="range"
-                          min={0}
-                          max={48}
-                          value={selectedItem.borderRadius}
-                          onChange={(event) =>
-                            patchSelectedItem((item) =>
-                              item.type === "image"
-                                ? { ...item, borderRadius: Number(event.target.value) }
-                                : item,
-                            )
-                          }
-                          className="w-full"
-                        />
-                      </Field>
-                      <Field label="Shadow depth">
-                        <input
-                          type="range"
-                          min={8}
-                          max={44}
-                          value={selectedItem.shadow}
-                          onChange={(event) =>
-                            patchSelectedItem((item) =>
-                              item.type === "image"
-                                ? { ...item, shadow: Number(event.target.value) }
-                                : item,
-                            )
-                          }
-                          className="w-full"
-                        />
-                      </Field>
-                    </div>
-                  </>
-                )}
-
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Width">
-                    <input
-                      type="number"
-                      min={120}
-                      value={Math.round(selectedItem.width)}
-                      onChange={(event) =>
-                        patchSelectedItem((item) => ({
-                          ...item,
-                          width: clamp(
-                            Number(event.target.value) || item.width,
-                            item.type === "image" ? 180 : 160,
-                            BOARD_SIZE.width - item.x - 40,
-                          ),
-                        }))
-                      }
-                      className="w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none"
-                    />
-                  </Field>
-                  <Field label="Height">
-                    <input
-                      type="number"
-                      min={80}
-                      value={Math.round(selectedItem.height)}
-                      onChange={(event) =>
-                        patchSelectedItem((item) => ({
-                          ...item,
-                          height: clamp(
-                            Number(event.target.value) || item.height,
-                            item.type === "image" ? 220 : 90,
-                            BOARD_SIZE.height - item.y - 40,
-                          ),
-                        }))
-                      }
-                      className="w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none"
-                    />
-                  </Field>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <ToolbarButton onClick={duplicateSelectedItem}>Duplicate</ToolbarButton>
-                  <ToolbarButton onClick={removeSelectedItem}>Delete</ToolbarButton>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="rounded-[8px] border border-white/8 bg-white/4 p-4">
-                  <p className="text-sm font-semibold">Board health</p>
-                  <div className="mt-4 grid grid-cols-2 gap-3">
-                    <MetricCard label="Images" value={workspaceImages.length} />
-                    <MetricCard label="Text blocks" value={workspaceTexts.length} />
-                    <MetricCard label="Layers" value={activeWorkspace.items.length} />
-                    <MetricCard
-                      label="Shared"
-                      value={activeWorkspace.shared ? "Yes" : "No"}
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <Field label="W">
+                      <input
+                        type="number"
+                        value={Math.round(selectedItem.width)}
+                        onChange={(event) =>
+                          patchSelectedItem((item) => ({
+                            ...item,
+                            width: clamp(
+                              Number(event.target.value) || item.width,
+                              item.type === "image" ? 180 : 160,
+                              BOARD_SIZE.width - item.x - 40,
+                            ),
+                          }))
+                        }
+                        className="w-full border border-white/8 bg-white/4 px-3 py-3 text-sm text-white outline-none"
+                      />
+                    </Field>
+                    <Field label="H">
+                      <input
+                        type="number"
+                        value={Math.round(selectedItem.height)}
+                        onChange={(event) =>
+                          patchSelectedItem((item) => ({
+                            ...item,
+                            height: clamp(
+                              Number(event.target.value) || item.height,
+                              item.type === "image" ? 220 : 90,
+                              BOARD_SIZE.height - item.y - 40,
+                            ),
+                          }))
+                        }
+                        className="w-full border border-white/8 bg-white/4 px-3 py-3 text-sm text-white outline-none"
+                      />
+                    </Field>
                   </div>
                 </div>
-
-                <div className="rounded-[8px] border border-white/8 bg-white/3 p-4 text-sm leading-7 text-[var(--muted)]">
-                  Use the left rail for board switching, drop files straight into the
-                  canvas, and shape image crops from this inspector once a frame is
-                  selected.
+              ) : (
+                <div className="space-y-3 text-sm text-[var(--muted)]">
+                  <div className="border border-white/8 bg-white/4 px-3 py-3">
+                    Select a layer.
+                  </div>
+                  <div className="border border-white/8 bg-white/4 px-3 py-3">
+                    Images: {workspaceImages.length}
+                  </div>
+                  <div className="border border-white/8 bg-white/4 px-3 py-3">
+                    Text: {workspaceTexts.length}
+                  </div>
                 </div>
+              )}
+            </SidebarSection>
+
+            <SidebarSection label="People">
+              <div className="space-y-2">
+                {activeWorkspace.collaborators.map((person, index) => (
+                  <div
+                    key={`${person}-${index}`}
+                    className="flex items-center justify-between border border-white/8 bg-white/4 px-3 py-3 text-sm"
+                  >
+                    <span>{person}</span>
+                    <span className="text-[var(--muted)]">Edit</span>
+                  </div>
+                ))}
               </div>
-            )}
-          </PanelSection>
-
-          <PanelSection eyebrow="Sync plan" title="Backend-ready next steps">
-            <div className="space-y-3 text-sm leading-7 text-[var(--muted)]">
-              <p>Google sign-in is now wired with Supabase Auth.</p>
-              <p>Boards, layers, and comments should live in Postgres with row-level security.</p>
-              <p>Uploads belong in Supabase Storage, then realtime presence can mirror Figma-like collaboration.</p>
-            </div>
-          </PanelSection>
-
-          <PanelSection eyebrow="Shortcuts" title="Fast editing">
-            <div className="space-y-2 text-sm text-[var(--muted)]">
-              <ShortcutRow shortcut="T" description="Add a text note at the center" />
-              <ShortcutRow shortcut="F" description="Open image picker" />
-              <ShortcutRow shortcut="Del" description="Delete the selected layer" />
-              <ShortcutRow shortcut="Double click" description="Create text on the canvas" />
-            </div>
-          </PanelSection>
-        </aside>
+            </SidebarSection>
+          </aside>
+        </div>
       </div>
 
       {isShareOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
-          <div className="w-full max-w-xl rounded-[10px] border border-white/8 bg-[rgba(14,17,22,0.98)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-xl border border-white/8 bg-[var(--panel-strong)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--muted)]">
-                  Share Board
-                </p>
-                <h2 className="mt-2 text-2xl font-medium tracking-[-0.05em]">
+                <div className="font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Share
+                </div>
+                <div className="mt-2 text-2xl font-medium tracking-[-0.05em]">
                   {activeWorkspace.name}
-                </h2>
-                <p className="mt-2 text-sm leading-7 text-[var(--muted)]">
-                  Invite collaborators or copy a direct board link.
-                </p>
+                </div>
               </div>
-              <ToolbarButton onClick={() => setIsShareOpen(false)}>Close</ToolbarButton>
+              <ActionButton onClick={() => setIsShareOpen(false)}>Close</ActionButton>
             </div>
 
-            <div className="mt-5 grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
+            <div className="mt-5 grid gap-4 md:grid-cols-[1.15fr_0.85fr]">
               <div className="space-y-4">
-                <Field label="Invite by email">
+                <Field label="Invite">
                   <div className="flex gap-2">
                     <input
                       value={inviteEmail}
                       onChange={(event) => setInviteEmail(event.target.value)}
                       placeholder="name@email.com"
-                      className="flex-1 rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none placeholder:text-white/28"
+                      className="flex-1 border border-white/8 bg-white/4 px-3 py-3 text-sm text-white outline-none placeholder:text-white/28"
                     />
-                    <ToolbarButton onClick={handleInviteCollaborator}>Invite</ToolbarButton>
+                    <ActionButton onClick={handleInviteCollaborator}>Invite</ActionButton>
                   </div>
                 </Field>
 
-                <Field label="Board link">
+                <Field label="Link">
                   <div className="flex gap-2">
-                    <div className="flex-1 truncate rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[var(--muted)]">
+                    <div className="flex-1 truncate border border-white/8 bg-white/4 px-3 py-3 text-sm text-[var(--muted)]">
                       {currentBoardLink}
                     </div>
-                    <ToolbarButton onClick={() => void handleCopyBoardLink()}>
-                      Copy link
-                    </ToolbarButton>
+                    <ActionButton onClick={() => void handleCopyBoardLink()}>
+                      Copy
+                    </ActionButton>
                   </div>
                 </Field>
 
                 {shareNotice ? (
-                  <div className="rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[var(--foreground)]">
+                  <div className="border border-white/8 bg-white/4 px-3 py-3 text-sm">
                     {shareNotice}
                   </div>
                 ) : null}
               </div>
 
-              <div className="rounded-[8px] border border-white/8 bg-white/3 p-4">
-                <p className="text-sm font-medium text-white">People with access</p>
-                <div className="mt-4 space-y-2">
+              <div className="border border-white/8 bg-white/3 p-4">
+                <div className="font-mono text-[10px] uppercase tracking-[0.18em] text-[var(--muted)]">
+                  Access
+                </div>
+                <div className="mt-3 space-y-2">
                   {activeWorkspace.collaborators.map((person, index) => (
                     <div
                       key={`${person}-${index}`}
-                      className="flex items-center justify-between rounded-[8px] border border-white/8 bg-white/4 px-3 py-2"
+                      className="flex items-center justify-between border border-white/8 bg-white/4 px-3 py-2"
                     >
                       <div className="flex items-center gap-3">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-[6px] border border-white/10 bg-white/6 text-xs font-semibold">
+                        <div className="flex h-8 w-8 items-center justify-center border border-white/10 bg-white/6 text-xs font-medium">
                           {person}
                         </div>
-                        <div className="text-sm text-[var(--foreground)]">{person}</div>
+                        <div className="text-sm">{person}</div>
                       </div>
-                      <div className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
-                        edit
-                      </div>
+                      <div className="text-xs text-[var(--muted)]">Edit</div>
                     </div>
                   ))}
                 </div>
@@ -1749,71 +1556,5 @@ export function MoodboardStudio({
         </div>
       ) : null}
     </main>
-  );
-}
-
-function FeatureStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[8px] border border-white/8 bg-white/4 p-4">
-      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
-        {label}
-      </p>
-      <p className="mt-2 text-lg font-semibold tracking-[-0.03em]">{value}</p>
-    </div>
-  );
-}
-
-function ToolbarButton({
-  children,
-  onClick,
-  disabled,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-[8px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
-    >
-      {children}
-    </button>
-  );
-}
-
-function MetricCard({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="rounded-[8px] border border-white/8 bg-white/4 p-3">
-      <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
-        {label}
-      </p>
-      <p className="mt-2 text-xl font-semibold tracking-[-0.03em]">{value}</p>
-    </div>
-  );
-}
-
-function ShortcutRow({
-  shortcut,
-  description,
-}: {
-  shortcut: string;
-  description: string;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-3 rounded-[8px] border border-white/8 bg-white/4 px-3 py-2.5">
-      <span className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--foreground)]">
-        {shortcut}
-      </span>
-      <span className="text-right">{description}</span>
-    </div>
   );
 }
