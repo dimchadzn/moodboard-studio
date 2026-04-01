@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import {
   startTransition,
-  useDeferredValue,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -55,6 +54,11 @@ type MoodboardStudioProps = {
 type ToolMode = "select" | "text";
 type ResizeHandle = "nw" | "ne" | "sw" | "se";
 type SyncStatus = "local" | "syncing" | "synced" | "error";
+type InspectorSection = "arrange" | "appearance" | "content";
+
+type ClipboardItem = {
+  item: BoardItem;
+};
 
 type ContextMenuState =
   | {
@@ -141,7 +145,12 @@ type IconName =
   | "rotate"
   | "ellipsis"
   | "check"
-  | "close";
+  | "close"
+  | "sidebar"
+  | "inspector"
+  | "copy"
+  | "paste"
+  | "reset";
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -161,20 +170,13 @@ function getInitials(value: string) {
     .toUpperCase();
 }
 
-function formatUpdatedAt(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
 function normalizeItem(item: BoardItem): BoardItem {
   if (item.type === "image") {
     return {
       ...item,
       rotation: item.rotation ?? 0,
+      originalWidth: item.originalWidth ?? item.width,
+      originalHeight: item.originalHeight ?? item.height,
       borderRadius: item.borderRadius ?? 4,
       shadow: item.shadow ?? 18,
       aspectRatioLocked: item.aspectRatioLocked ?? true,
@@ -278,6 +280,16 @@ function sanitizeHex(value: string, fallback: string) {
     return `#${normalized.toLowerCase()}`;
   }
   return fallback;
+}
+
+function normalizeRotation(value: number) {
+  const normalized = ((value % 360) + 360) % 360;
+  return normalized > 180 ? normalized - 360 : normalized;
+}
+
+function snapAngle(value: number, increment = 15, threshold = 3) {
+  const snapped = Math.round(value / increment) * increment;
+  return Math.abs(snapped - value) <= threshold ? snapped : value;
 }
 
 function createWorkspace(
@@ -460,6 +472,39 @@ function Icon({
           <path {...strokeProps} d="M5 5l10 10M15 5 5 15" />
         </svg>
       );
+    case "sidebar":
+      return (
+        <svg viewBox="0 0 20 20" className={className} aria-hidden="true">
+          <path {...strokeProps} d="M4 4.5h12v11H4zM8 4.5v11" />
+        </svg>
+      );
+    case "inspector":
+      return (
+        <svg viewBox="0 0 20 20" className={className} aria-hidden="true">
+          <path {...strokeProps} d="M4 4.5h12v11H4zM12 4.5v11" />
+        </svg>
+      );
+    case "copy":
+      return (
+        <svg viewBox="0 0 20 20" className={className} aria-hidden="true">
+          <rect {...strokeProps} x="7" y="7" width="8" height="8" rx="1.5" />
+          <path {...strokeProps} d="M5 12.5h-.5A1.5 1.5 0 0 1 3 11V5.5A1.5 1.5 0 0 1 4.5 4H10a1.5 1.5 0 0 1 1.5 1.5V6" />
+        </svg>
+      );
+    case "paste":
+      return (
+        <svg viewBox="0 0 20 20" className={className} aria-hidden="true">
+          <path {...strokeProps} d="M7 5.5H5.5A1.5 1.5 0 0 0 4 7v8.5A1.5 1.5 0 0 0 5.5 17h7A1.5 1.5 0 0 0 14 15.5V14" />
+          <path {...strokeProps} d="M9 5h5.5A1.5 1.5 0 0 1 16 6.5v7A1.5 1.5 0 0 1 14.5 15H9" />
+          <path {...strokeProps} d="M8 5h4M9 3.8h2A1.2 1.2 0 0 1 12.2 5H7.8A1.2 1.2 0 0 1 9 3.8Z" />
+        </svg>
+      );
+    case "reset":
+      return (
+        <svg viewBox="0 0 20 20" className={className} aria-hidden="true">
+          <path {...strokeProps} d="M15.2 8.2A5.2 5.2 0 1 0 16 11.5M15.2 8.2V4.8M15.2 8.2h-3.4" />
+        </svg>
+      );
     default:
       return null;
   }
@@ -638,10 +683,17 @@ function ColorPickerField({
           })}
         </div>
         <div className="flex items-center gap-3">
-          <div
-            className="h-10 w-10 rounded-[12px] border border-white/10"
+          <label
+            className="relative block h-10 w-10 overflow-hidden rounded-[12px] border border-white/10"
             style={{ backgroundColor: value }}
-          />
+          >
+            <input
+              type="color"
+              value={sanitizeHex(value, "#f2efe8")}
+              onChange={(event) => onChange(event.target.value)}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+            />
+          </label>
           <input
             value={draft.toUpperCase()}
             onChange={(event) => setDraft(event.target.value)}
@@ -725,14 +777,14 @@ export function MoodboardStudio({
   const router = useRouter();
   const canvasRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const editingTextRef = useRef<HTMLDivElement>(null);
   const pointerActionRef = useRef<PointerAction | null>(null);
   const dragDepthRef = useRef(0);
   const ignoreRemoteSaveRef = useRef(false);
   const remoteHydratedRef = useRef(false);
-  const remoteChannelRef = useRef<string | null>(null);
 
   const [appState, setAppState] = useState<AppState>(loadInitialState);
-  const [workspaceQuery, setWorkspaceQuery] = useState("");
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(initialUser);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
@@ -744,11 +796,15 @@ export function MoodboardStudio({
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>("local");
   const [syncMessage, setSyncMessage] = useState<string>("Local only");
+  const [leftPanelOpen, setLeftPanelOpen] = useState(true);
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [editingTextId, setEditingTextId] = useState<string | null>(null);
+  const [clipboardItem, setClipboardItem] = useState<ClipboardItem | null>(null);
+  const [inspectorSection, setInspectorSection] = useState<InspectorSection>("arrange");
   const [supabase] = useState(() =>
     isSupabaseConfigured ? createSupabaseBrowserClient() : null,
   );
-
-  const deferredWorkspaceQuery = useDeferredValue(workspaceQuery);
   const currentUserName =
     currentUser?.user_metadata?.full_name ??
     currentUser?.user_metadata?.name ??
@@ -763,19 +819,7 @@ export function MoodboardStudio({
   const selectedItem =
     activeWorkspace.items.find((item) => item.id === appState.selectedItemId) ?? null;
 
-  const filteredWorkspaces = useMemo(() => {
-    const query = deferredWorkspaceQuery.trim().toLowerCase();
-    if (!query) {
-      return appState.workspaces;
-    }
-
-    return appState.workspaces.filter((workspace) => {
-      return (
-        workspace.name.toLowerCase().includes(query) ||
-        workspace.description.toLowerCase().includes(query)
-      );
-    });
-  }, [appState.workspaces, deferredWorkspaceQuery]);
+  const filteredWorkspaces = useMemo(() => appState.workspaces, [appState.workspaces]);
 
   const currentBoardLink =
     typeof window === "undefined"
@@ -804,6 +848,63 @@ export function MoodboardStudio({
   }, [initialUser]);
 
   useEffect(() => {
+    if (!editingTextId) {
+      return;
+    }
+
+    const frame = window.requestAnimationFrame(() => {
+      const node = editingTextRef.current;
+      if (!node) {
+        return;
+      }
+      node.focus();
+      const selection = window.getSelection();
+      if (!selection) {
+        return;
+      }
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      range.collapse(false);
+      selection.removeAllRanges();
+      selection.addRange(range);
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [editingTextId]);
+
+  useEffect(() => {
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (profileMenuRef.current && target && !profileMenuRef.current.contains(target)) {
+        setIsProfileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || appState.workspaces.length === 0) {
+      return;
+    }
+
+    const boardId = new URLSearchParams(window.location.search).get("board");
+    if (!boardId) {
+      return;
+    }
+
+    const match = appState.workspaces.find((workspace) => workspace.id === boardId);
+    if (match && match.id !== appState.activeWorkspaceId) {
+      setAppState((previous) => ({
+        ...previous,
+        activeWorkspaceId: match.id,
+        selectedItemId: null,
+      }));
+    }
+  }, [appState.activeWorkspaceId, appState.workspaces]);
+
+  useEffect(() => {
     if (!supabase) {
       return;
     }
@@ -819,6 +920,12 @@ export function MoodboardStudio({
 
     return () => subscription.unsubscribe();
   }, [router, supabase]);
+
+  useEffect(() => {
+    if (selectedItem) {
+      setInspectorSection(selectedItem.type === "text" ? "content" : "appearance");
+    }
+  }, [selectedItem]);
 
   function patchActiveWorkspace(
     updater: (workspace: Workspace) => Workspace,
@@ -850,6 +957,80 @@ export function MoodboardStudio({
         item.id === appState.selectedItemId ? updater(item) : item,
       ),
     }));
+  }
+
+  function syncTextBoxSize(itemId: string, node: HTMLDivElement | null) {
+    if (!node) {
+      return;
+    }
+
+    const nextWidth = Math.ceil(node.scrollWidth);
+    const nextHeight = Math.ceil(node.scrollHeight);
+
+    patchActiveWorkspace((workspace) => ({
+      ...workspace,
+      items: workspace.items.map((item) => {
+        if (item.id !== itemId || item.type !== "text") {
+          return item;
+        }
+
+        return {
+          ...item,
+          width: clamp(nextWidth, 80, BOARD_SIZE.width - item.x - 40),
+          height: clamp(nextHeight, 44, BOARD_SIZE.height - item.y - 40),
+        };
+      }),
+    }));
+  }
+
+  function startEditingText(itemId: string) {
+    setAppState((previous) => ({ ...previous, selectedItemId: itemId }));
+    setEditingTextId(itemId);
+    setToolMode("select");
+    setInspectorSection("content");
+  }
+
+  function commitCanvasText(itemId: string, value: string) {
+    const nextValue = value.replace(/\u00a0/g, " ").replace(/\n{3,}/g, "\n\n");
+    patchActiveWorkspace((workspace) => ({
+      ...workspace,
+      items: workspace.items.map((item) =>
+        item.id === itemId && item.type === "text"
+          ? { ...item, text: nextValue.length > 0 ? nextValue : "Text" }
+          : item,
+      ),
+    }));
+  }
+
+  function copySelectedItem() {
+    if (!selectedItem) {
+      return;
+    }
+    setClipboardItem({ item: structuredClone(selectedItem) });
+  }
+
+  function pasteClipboardItem() {
+    if (!clipboardItem) {
+      return;
+    }
+
+    const baseItem = clipboardItem.item;
+    const duplicateId = createId(baseItem.type);
+    patchActiveWorkspace((workspace) => ({
+      ...workspace,
+      items: [
+        ...workspace.items,
+        {
+          ...baseItem,
+          id: duplicateId,
+          x: clamp(baseItem.x + 56, 40, BOARD_SIZE.width - baseItem.width - 40),
+          y: clamp(baseItem.y + 56, 40, BOARD_SIZE.height - baseItem.height - 40),
+          zIndex: workspace.items.length + 1,
+        },
+      ],
+    }));
+
+    setAppState((previous) => ({ ...previous, selectedItemId: duplicateId }));
   }
 
   function getViewportCenter() {
@@ -948,6 +1129,8 @@ export function MoodboardStudio({
     }));
 
     setAppState((previous) => ({ ...previous, selectedItemId: id }));
+    setEditingTextId(id);
+    setInspectorSection("content");
   }
 
   function removeSelectedItem() {
@@ -995,7 +1178,13 @@ export function MoodboardStudio({
         selectedItemId: null,
       }));
     });
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("board", workspaceId);
+      window.history.replaceState({}, "", url);
+    }
     setToolMode("select");
+    setEditingTextId(null);
     setContextMenu(null);
   }
 
@@ -1014,6 +1203,11 @@ export function MoodboardStudio({
         workspaces: [workspace, ...previous.workspaces],
       }));
     });
+    if (typeof window !== "undefined") {
+      const url = new URL(window.location.href);
+      url.searchParams.set("board", workspace.id);
+      window.history.replaceState({}, "", url);
+    }
     setToolMode("select");
   }
 
@@ -1040,6 +1234,11 @@ export function MoodboardStudio({
       activeWorkspaceId: nextActiveWorkspaceId ?? previous.workspaces[0].id,
       selectedItemId: null,
     }));
+    if (typeof window !== "undefined" && nextActiveWorkspaceId) {
+      const url = new URL(window.location.href);
+      url.searchParams.set("board", nextActiveWorkspaceId);
+      window.history.replaceState({}, "", url);
+    }
 
     if (supabase && currentUser && (workspace.ownerId === currentUser.id || !workspace.ownerId)) {
       const { error } = await deleteRemoteBoard(supabase, workspaceId);
@@ -1156,6 +1355,8 @@ export function MoodboardStudio({
           height: targetHeight,
           zIndex: activeWorkspace.items.length + index + 1,
           rotation: 0,
+          originalWidth: targetWidth,
+          originalHeight: targetHeight,
           cropX: 0,
           cropY: 0,
           cropScale: 1,
@@ -1223,6 +1424,39 @@ export function MoodboardStudio({
     const remoteWorkspaces = (data ?? []).map((row) =>
       normalizeWorkspace(mapBoardRowToWorkspace(row)),
     );
+
+    if (remoteWorkspaces.length === 0 && appState.workspaces.length > 0) {
+      const localBoards = appState.workspaces.map((workspace) =>
+        normalizeWorkspace({
+          ...workspace,
+          ownerId: workspace.ownerId ?? userId,
+        }),
+      );
+      const seeded = await upsertRemoteBoards(client, localBoards, userId);
+      if (!seeded.error) {
+        const reloaded = await fetchRemoteBoards(client, userId);
+        if (!reloaded.error && reloaded.data) {
+          ignoreRemoteSaveRef.current = true;
+          setAppState((previous) => ({
+            ...previous,
+            workspaces: reloaded.data.map((row) =>
+              normalizeWorkspace(mapBoardRowToWorkspace(row)),
+            ),
+            activeWorkspaceId:
+              reloaded.data.find((row) => row.id === previous.activeWorkspaceId)?.id ??
+              reloaded.data[0]?.id ??
+              previous.activeWorkspaceId,
+          }));
+          remoteHydratedRef.current = true;
+          setSyncStatus("synced");
+          setSyncMessage("Boards synced");
+          window.setTimeout(() => {
+            ignoreRemoteSaveRef.current = false;
+          }, 0);
+          return;
+        }
+      }
+    }
 
     ignoreRemoteSaveRef.current = true;
 
@@ -1332,11 +1566,8 @@ export function MoodboardStudio({
       )
       .subscribe();
 
-    remoteChannelRef.current = `boards-sync-${currentUser.id}`;
-
     return () => {
       void supabase.removeChannel(channel);
-      remoteChannelRef.current = null;
     };
   }, [currentUser, supabase]);
 
@@ -1389,16 +1620,19 @@ export function MoodboardStudio({
               }
 
               if (action.type === "rotate") {
-                const angle =
+                const rawAngle =
                   Math.atan2(
                     event.clientY - action.centerClientY,
                     event.clientX - action.centerClientX,
                   ) *
                   (180 / Math.PI);
+                const nextRotation = normalizeRotation(
+                  event.shiftKey ? rawAngle + 90 : snapAngle(rawAngle + 90),
+                );
 
                 return {
                   ...item,
-                  rotation: angle + 90,
+                  rotation: nextRotation,
                 };
               }
 
@@ -1501,6 +1735,26 @@ export function MoodboardStudio({
       removeSelectedItem();
     }
 
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c" && selectedItem) {
+      event.preventDefault();
+      copySelectedItem();
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v" && clipboardItem) {
+      event.preventDefault();
+      pasteClipboardItem();
+    }
+
+    if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d" && selectedItem) {
+      event.preventDefault();
+      duplicateSelectedItem();
+    }
+
+    if (selectedItem?.type === "text" && event.key === "Enter" && !editingTextId) {
+      event.preventDefault();
+      startEditingText(selectedItem.id);
+    }
+
     if (event.key.toLowerCase() === "t") {
       event.preventDefault();
       setToolMode("text");
@@ -1516,14 +1770,61 @@ export function MoodboardStudio({
       fileInputRef.current?.click();
     }
 
+    if (event.key.toLowerCase() === "b") {
+      event.preventDefault();
+      setLeftPanelOpen((previous) => !previous);
+    }
+
+    if (event.key.toLowerCase() === "i") {
+      event.preventDefault();
+      setRightPanelOpen((previous) => !previous);
+    }
+
     if (event.key.toLowerCase() === "0") {
       event.preventDefault();
       fitBoardToView();
     }
 
+    if (selectedItem && event.key.toLowerCase() === "r") {
+      event.preventDefault();
+      patchSelectedItem((item) => ({
+        ...item,
+        rotation: event.shiftKey
+          ? normalizeRotation(item.rotation + 15)
+          : normalizeRotation(item.rotation - 15),
+      }));
+    }
+
+    if (selectedItem && event.key.toLowerCase() === "x") {
+      event.preventDefault();
+      patchSelectedItem((item) => ({ ...item, rotation: 0 }));
+    }
+
+    if (selectedItem && ["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(event.key)) {
+      event.preventDefault();
+      const step = event.shiftKey ? 10 : 1;
+      patchSelectedItem((item) => ({
+        ...item,
+        x:
+          event.key === "ArrowLeft"
+            ? clamp(item.x - step, 40, BOARD_SIZE.width - item.width - 40)
+            : event.key === "ArrowRight"
+              ? clamp(item.x + step, 40, BOARD_SIZE.width - item.width - 40)
+              : item.x,
+        y:
+          event.key === "ArrowUp"
+            ? clamp(item.y - step, 40, BOARD_SIZE.height - item.height - 40)
+            : event.key === "ArrowDown"
+              ? clamp(item.y + step, 40, BOARD_SIZE.height - item.height - 40)
+              : item.y,
+      }));
+    }
+
     if (event.key === "Escape") {
       setIsShareOpen(false);
       setContextMenu(null);
+       setEditingTextId(null);
+      setIsProfileMenuOpen(false);
       setToolMode("select");
     }
   });
@@ -1564,6 +1865,7 @@ export function MoodboardStudio({
       originPanY: activeWorkspace.view.panY,
     };
 
+    setEditingTextId(null);
     setAppState((previous) => ({ ...previous, selectedItemId: null }));
   }
 
@@ -1575,10 +1877,14 @@ export function MoodboardStudio({
       return;
     }
 
-    event.stopPropagation();
-    setContextMenu(null);
-
     const target = event.target as HTMLElement;
+    if (target.closest("[data-text-editor='true']")) {
+      return;
+    }
+
+    event.stopPropagation();
+    event.preventDefault();
+    setContextMenu(null);
     const handle = target.dataset.handle as ResizeHandle | "rotate" | undefined;
 
     if (handle === "rotate") {
@@ -1653,11 +1959,11 @@ export function MoodboardStudio({
       return;
     }
 
-    if (event.ctrlKey || event.metaKey) {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
       const pointerX = event.clientX - rect.left;
       const pointerY = event.clientY - rect.top;
       const nextZoom = clamp(
-        activeWorkspace.view.zoom * (event.deltaY < 0 ? 1.08 : 0.92),
+        activeWorkspace.view.zoom * (event.deltaY < 0 ? 1.08 : 0.9),
         MIN_ZOOM,
         MAX_ZOOM,
       );
@@ -1724,6 +2030,7 @@ export function MoodboardStudio({
 
   function openCanvasMenu(event: React.MouseEvent<HTMLDivElement>) {
     event.preventDefault();
+    setEditingTextId(null);
     setContextMenu({
       x: event.clientX,
       y: event.clientY,
@@ -1734,6 +2041,7 @@ export function MoodboardStudio({
   function openItemMenu(event: React.MouseEvent<HTMLDivElement>, itemId: string) {
     event.preventDefault();
     event.stopPropagation();
+    setEditingTextId(null);
     setAppState((previous) => ({ ...previous, selectedItemId: itemId }));
     setContextMenu({
       x: event.clientX,
@@ -1795,45 +2103,63 @@ export function MoodboardStudio({
         onChange={handleFileSelection}
       />
 
-      <div className="grid h-full grid-cols-[256px_minmax(0,1fr)_320px] grid-rows-[52px_1fr]">
-        <header className="col-span-3 grid grid-cols-[220px_1fr_auto] items-center border-b border-white/8 bg-[#090909] px-4">
-          <div className="text-[15px] tracking-[-0.02em]">Muse</div>
-
-          <div className="mx-auto flex w-full max-w-[420px] items-center gap-2 rounded-[14px] border border-white/8 bg-[#111111] px-3 py-2 text-sm text-[var(--muted)]">
-            <Icon name="search" className="h-4 w-4" />
-            <input
-              value={workspaceQuery}
-              onChange={(event) => setWorkspaceQuery(event.target.value)}
-              placeholder="Search boards"
-              className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/24"
+      <div
+        className="grid h-full transition-[grid-template-columns] duration-200"
+        style={{
+          gridTemplateColumns: `72px ${leftPanelOpen ? "236px" : "0px"} minmax(0,1fr) ${
+            rightPanelOpen ? "320px" : "0px"
+          }`,
+        }}
+      >
+        <aside className="flex flex-col border-r border-white/8 bg-[#090909]">
+          <div className="flex h-16 items-center justify-center border-b border-white/8 text-[15px] tracking-[-0.02em]">
+            M
+          </div>
+          <div className="flex flex-1 flex-col items-center gap-2 px-3 py-4">
+            <ToolButton
+              icon="cursor"
+              label="Select"
+              active={toolMode === "select"}
+              onClick={() => setToolMode("select")}
+            />
+            <ToolButton
+              icon="text"
+              label="Text"
+              active={toolMode === "text"}
+              onClick={() => setToolMode("text")}
+            />
+            <ToolButton
+              icon="upload"
+              label="Upload"
+              onClick={() => fileInputRef.current?.click()}
+            />
+            <ToolButton
+              icon="share"
+              label="Share"
+              onClick={() => setIsShareOpen(true)}
+            />
+            <div className="mt-3 h-px w-8 bg-white/8" />
+            <ToolButton
+              icon="sidebar"
+              label="Boards"
+              active={leftPanelOpen}
+              onClick={() => setLeftPanelOpen((previous) => !previous)}
+            />
+            <ToolButton
+              icon="inspector"
+              label="Inspector"
+              active={rightPanelOpen}
+              onClick={() => setRightPanelOpen((previous) => !previous)}
             />
           </div>
+        </aside>
 
-          <div className="flex items-center gap-2">
-            <div className="hidden h-9 items-center rounded-[12px] border border-white/8 bg-[#101010] px-3 text-[12px] text-[var(--muted)] md:flex">
-              {syncBadgeLabel}
-            </div>
-            <SurfaceButton compact onClick={() => fileInputRef.current?.click()}>
-              <Icon name="upload" className="h-4 w-4" />
-              Upload
-            </SurfaceButton>
-            <SurfaceButton compact onClick={() => setIsShareOpen(true)}>
-              <Icon name="share" className="h-4 w-4" />
-              Share
-            </SurfaceButton>
-            <div className="hidden items-center gap-3 rounded-[14px] border border-white/8 bg-[#111111] px-3 py-2 md:flex">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-white/[0.05] text-[12px] font-medium">
-                {getInitials(currentUserName)}
-              </div>
-              <div className="max-w-[140px] truncate text-[13px] text-[var(--muted)]">
-                {currentUserName}
-              </div>
-            </div>
-          </div>
-        </header>
-
-        <aside className="min-h-0 border-r border-white/8 bg-[#0b0b0b]">
-          <div className="flex items-center justify-between border-b border-white/8 px-4 py-4">
+        <aside
+          className={`min-h-0 overflow-hidden border-r border-white/8 bg-[#0b0b0b] ${
+            leftPanelOpen ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <div className="flex h-16 items-center justify-between border-b border-white/8 px-4">
             <div className="text-[14px] text-white">Boards</div>
             <button
               type="button"
@@ -1855,45 +2181,55 @@ export function MoodboardStudio({
               />
             ))}
           </div>
-
-          <div className="border-t border-white/8 px-4 py-4">
-            <div className="text-[12px] text-[var(--muted)]">{formatUpdatedAt(activeWorkspace.updatedAt)}</div>
-            <div className="mt-3 flex items-center gap-2">
-              {activeWorkspace.collaborators.map((person, index) => (
-                <div
-                  key={`${person}-${index}`}
-                  className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-[#111111] text-[11px] text-white"
-                >
-                  {person}
-                </div>
-              ))}
-            </div>
-            <button
-              type="button"
-              onClick={() => void handleSignOut()}
-              className="mt-4 text-[12px] text-[var(--muted)] transition hover:text-white"
-            >
-              {isAuthLoading ? "Signing out..." : "Sign out"}
-            </button>
-          </div>
         </aside>
 
-        <section className="grid min-h-0 grid-rows-[48px_1fr_54px] bg-[#070707]">
-          <div className="flex items-center justify-between border-b border-white/8 px-4">
-            <div className="min-w-0">
-              <div className="truncate text-[15px] text-white">{activeWorkspace.name}</div>
-              <div className="mt-1 truncate text-[11px] text-[var(--muted)]">
-                {activeWorkspace.description}
-              </div>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="hidden h-9 items-center rounded-[12px] border border-white/8 bg-[#101010] px-3 text-[12px] text-[var(--muted)] md:flex">
-                {syncMessage}
-              </div>
-              <SurfaceButton compact onClick={fitBoardToView}>
-                <Icon name="fit" className="h-4 w-4" />
-                Fit
-              </SurfaceButton>
+        <section className="relative min-h-0 overflow-hidden bg-[#070707]">
+          <div className="absolute left-5 top-5 z-30 flex items-center gap-2 rounded-[14px] border border-white/8 bg-[#0d0d0d]/92 px-3 py-2 backdrop-blur">
+            <div className="text-[13px] text-white">{activeWorkspace.name}</div>
+            <div className="h-1 w-1 rounded-full bg-white/18" />
+            <div className="text-[12px] text-[var(--muted)]">{syncBadgeLabel}</div>
+          </div>
+
+          <div ref={profileMenuRef} className="absolute right-5 top-5 z-30">
+            <button
+              type="button"
+              onClick={() => setIsProfileMenuOpen((previous) => !previous)}
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-white/8 bg-[#0d0d0d]/92 text-[12px] font-medium backdrop-blur"
+            >
+              {getInitials(currentUserName)}
+            </button>
+            <div className="relative">
+              {isProfileMenuOpen ? (
+                <div className="absolute right-0 top-14 min-w-[220px] overflow-hidden rounded-[16px] border border-white/8 bg-[#101010] py-2 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
+                  <div className="px-4 py-2">
+                    <div className="text-sm text-white">{currentUserName}</div>
+                    <div className="mt-1 text-[12px] text-[var(--muted)]">{syncMessage}</div>
+                  </div>
+                  <div className="my-2 h-px bg-white/8" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsShareOpen(true);
+                      setIsProfileMenuOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition hover:bg-white/[0.06]"
+                  >
+                    <Icon name="share" className="h-4 w-4 text-[var(--muted)]" />
+                    Share board
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void handleSignOut();
+                      setIsProfileMenuOpen(false);
+                    }}
+                    className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition hover:bg-white/[0.06]"
+                  >
+                    <Icon name="close" className="h-4 w-4 text-[var(--muted)]" />
+                    {isAuthLoading ? "Signing out..." : "Sign out"}
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -1902,48 +2238,17 @@ export function MoodboardStudio({
             onPointerDown={handleCanvasPointerDown}
             onWheel={handleCanvasWheel}
             onDrop={handleDrop}
-            onDragOver={(event) => event.preventDefault()}
+            onDragOver={(event) => {
+              event.preventDefault();
+              event.dataTransfer.dropEffect = "copy";
+            }}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDoubleClick={handleDoubleClick}
             onContextMenu={openCanvasMenu}
-            className="relative min-h-0 overflow-hidden select-none bg-[#080808]"
+            className="relative h-full overflow-hidden bg-[#080808] select-none"
           >
             <div className="canvas-grid canvas-dots absolute inset-0" />
-
-            <div className="absolute left-4 top-4 z-20 flex flex-col gap-2">
-              <ToolButton
-                icon="cursor"
-                label="Select"
-                active={toolMode === "select"}
-                onClick={() => setToolMode("select")}
-              />
-              <ToolButton
-                icon="text"
-                label="Text"
-                active={toolMode === "text"}
-                onClick={() => setToolMode("text")}
-              />
-              <ToolButton
-                icon="upload"
-                label="Upload"
-                onClick={() => fileInputRef.current?.click()}
-              />
-            </div>
-
-            <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2">
-              <SurfaceButton compact onClick={() => updateZoom(activeWorkspace.view.zoom - 0.1)}>
-                <Icon name="minus" className="h-4 w-4" />
-              </SurfaceButton>
-              <div className="flex h-9 items-center rounded-[12px] border border-white/8 bg-[#101010] px-3 text-[12px] text-[var(--muted)]">
-                {Math.round(activeWorkspace.view.zoom * 100)}%
-              </div>
-              <SurfaceButton compact onClick={() => updateZoom(activeWorkspace.view.zoom + 0.1)}>
-                <Icon name="plus" className="h-4 w-4" />
-              </SurfaceButton>
-            </div>
-
-            <MiniMap workspace={activeWorkspace} onFit={fitBoardToView} />
 
             <div
               className="absolute left-0 top-0"
@@ -1955,21 +2260,18 @@ export function MoodboardStudio({
               }}
             >
               <div
-                className="absolute left-0 top-0 border border-white/8 bg-[#0d0d0d] shadow-[0_40px_120px_rgba(0,0,0,0.35)]"
+                className="absolute left-0 top-0 rounded-[2px] border border-white/10 bg-[#0d0d0d] shadow-[0_40px_120px_rgba(0,0,0,0.36)]"
                 style={{
                   width: BOARD_SIZE.width,
                   height: BOARD_SIZE.height,
                 }}
               />
 
-              <div className="pointer-events-none absolute left-8 top-8 text-[11px] uppercase tracking-[0.22em] text-white/14">
-                Board
-              </div>
-
               {activeWorkspace.items
                 .toSorted((left, right) => left.zIndex - right.zIndex)
                 .map((item) => {
                   const isSelected = item.id === selectedItem?.id;
+                  const isEditingText = item.type === "text" && editingTextId === item.id;
 
                   return (
                     <div
@@ -1977,6 +2279,11 @@ export function MoodboardStudio({
                       data-item-id={item.id}
                       onPointerDown={(event) => handleItemPointerDown(event, item)}
                       onContextMenu={(event) => openItemMenu(event, item.id)}
+                      onDoubleClick={() => {
+                        if (item.type === "text") {
+                          startEditingText(item.id);
+                        }
+                      }}
                       className="group absolute"
                       style={{
                         left: item.x,
@@ -1985,14 +2292,12 @@ export function MoodboardStudio({
                         height: item.height,
                         transform: `rotate(${item.rotation}deg)`,
                         transformOrigin: "center center",
-                        cursor: "grab",
+                        cursor: isEditingText ? "text" : "grab",
                       }}
                     >
                       {item.type === "image" ? (
                         <div
-                          className={`relative h-full overflow-hidden border ${
-                            isSelected ? "border-[2px] border-white" : "border-white/10"
-                          }`}
+                          className="relative h-full overflow-hidden bg-[#111111]"
                           style={{
                             borderRadius: item.borderRadius,
                             boxShadow: `0 ${Math.round(item.shadow / 2)}px ${item.shadow}px rgba(0, 0, 0, 0.32)`,
@@ -2008,52 +2313,71 @@ export function MoodboardStudio({
                             }}
                             draggable={false}
                           />
-                          <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-3 py-2 text-[11px] text-white opacity-0 transition group-hover:opacity-100">
-                            {item.label}
-                          </div>
+                        </div>
+                      ) : isEditingText ? (
+                        <div
+                          ref={editingTextRef}
+                          data-text-editor="true"
+                          contentEditable
+                          suppressContentEditableWarning
+                          spellCheck={false}
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onBlur={(event) => {
+                            commitCanvasText(item.id, event.currentTarget.innerText);
+                            syncTextBoxSize(item.id, event.currentTarget);
+                            setEditingTextId(null);
+                          }}
+                          onInput={(event) => {
+                            commitCanvasText(item.id, event.currentTarget.innerText);
+                            syncTextBoxSize(item.id, event.currentTarget);
+                          }}
+                          className="min-h-full whitespace-pre-wrap bg-transparent outline-none"
+                          style={{
+                            color: item.color,
+                            fontSize: item.fontSize,
+                            fontWeight: item.weight,
+                            letterSpacing: `${item.letterSpacing}px`,
+                            lineHeight: 0.95,
+                            textAlign: item.align,
+                          }}
+                        >
+                          {item.text}
                         </div>
                       ) : (
                         <div
-                          className={`h-full border px-4 py-3 ${
-                            isSelected
-                              ? "border-[2px] border-white bg-[#121212]"
-                              : "border-white/8 bg-[#101010]"
-                          }`}
+                          className="whitespace-pre-wrap"
+                          style={{
+                            color: item.color,
+                            fontSize: item.fontSize,
+                            fontWeight: item.weight,
+                            letterSpacing: `${item.letterSpacing}px`,
+                            lineHeight: 0.95,
+                            textAlign: item.align,
+                          }}
                         >
-                          <div
-                            className="h-full whitespace-pre-wrap select-none"
-                            style={{
-                              color: item.color,
-                              fontSize: item.fontSize,
-                              fontWeight: item.weight,
-                              letterSpacing: `${item.letterSpacing}px`,
-                              lineHeight: 0.95,
-                              textAlign: item.align,
-                            }}
-                          >
-                            {item.text}
-                          </div>
+                          {item.text}
                         </div>
                       )}
 
                       {isSelected ? (
                         <>
+                          <div className="pointer-events-none absolute inset-[-6px] rounded-[8px] border border-white/40" />
                           <div
                             data-handle="rotate"
-                            className="absolute left-1/2 top-[-28px] h-4 w-4 -translate-x-1/2 rounded-full border border-white/20 bg-[#111111]"
+                            className="absolute left-1/2 top-[-30px] h-4 w-4 -translate-x-1/2 rounded-full border border-white/16 bg-[#101010]"
                           />
                           {(["nw", "ne", "sw", "se"] as ResizeHandle[]).map((handle) => (
                             <div
                               key={handle}
                               data-handle={handle}
-                              className={`absolute h-3.5 w-3.5 border border-black bg-white ${
+                              className={`absolute h-3 w-3 rounded-full border border-[#050505] bg-white ${
                                 handle === "nw"
-                                  ? "left-[-7px] top-[-7px]"
+                                  ? "left-[-6px] top-[-6px]"
                                   : handle === "ne"
-                                    ? "right-[-7px] top-[-7px]"
+                                    ? "right-[-6px] top-[-6px]"
                                     : handle === "sw"
-                                      ? "bottom-[-7px] left-[-7px]"
-                                      : "bottom-[-7px] right-[-7px]"
+                                      ? "bottom-[-6px] left-[-6px]"
+                                      : "bottom-[-6px] right-[-6px]"
                               }`}
                             />
                           ))}
@@ -2064,321 +2388,249 @@ export function MoodboardStudio({
                 })}
             </div>
 
+            <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-[14px] border border-white/8 bg-[#0d0d0d]/92 px-2 py-2 backdrop-blur">
+              <button
+                type="button"
+                onClick={() => updateZoom(activeWorkspace.view.zoom - 0.1)}
+                className="flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--muted)] transition hover:bg-white/[0.06] hover:text-white"
+              >
+                <Icon name="minus" className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={fitBoardToView}
+                className="min-w-[56px] text-[12px] text-[var(--muted)] transition hover:text-white"
+              >
+                {Math.round(activeWorkspace.view.zoom * 100)}%
+              </button>
+              <button
+                type="button"
+                onClick={() => updateZoom(activeWorkspace.view.zoom + 0.1)}
+                className="flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--muted)] transition hover:bg-white/[0.06] hover:text-white"
+              >
+                <Icon name="plus" className="h-4 w-4" />
+              </button>
+            </div>
+
+            <MiniMap workspace={activeWorkspace} onFit={fitBoardToView} />
+
             {isDraggingFiles ? (
               <div className="absolute inset-5 z-30 flex items-center justify-center border border-dashed border-white/16 bg-black/76">
                 <div className="rounded-[16px] border border-white/8 bg-[#111111] px-5 py-3 text-sm text-[var(--muted)]">
-                  Drop images anywhere on the board
+                  Drop images
                 </div>
               </div>
             ) : null}
           </div>
-
-          <div className="flex items-center justify-between border-t border-white/8 px-4">
-            <div className="flex items-center gap-2">
-              <SurfaceButton compact onClick={duplicateSelectedItem} disabled={!selectedItem}>
-                <Icon name="duplicate" className="h-4 w-4" />
-                Duplicate
-              </SurfaceButton>
-              <SurfaceButton compact onClick={removeSelectedItem} disabled={!selectedItem} danger>
-                <Icon name="trash" className="h-4 w-4" />
-                Delete
-              </SurfaceButton>
-            </div>
-
-            <div className="text-[12px] text-[var(--muted)]">
-              {toolMode === "text"
-                ? "Click to place text"
-                : "Drag to move. Scroll to pan. Pinch to zoom. Right click for options."}
-            </div>
-          </div>
         </section>
 
-        <aside className="min-h-0 border-l border-white/8 bg-[#0b0b0b]">
-          <div className="h-full overflow-y-auto px-5 py-5">
-            <SectionLabel>{selectedItem ? "Selection" : "Board"}</SectionLabel>
+        <aside
+          className={`min-h-0 overflow-hidden border-l border-white/8 bg-[#0b0b0b] ${
+            rightPanelOpen ? "opacity-100" : "opacity-0"
+          }`}
+        >
+          <div className="flex h-16 items-center justify-between border-b border-white/8 px-5">
+            <div className="flex items-center gap-1 rounded-[12px] border border-white/8 bg-[#101010] p-1">
+              {(["arrange", "appearance", "content"] as InspectorSection[]).map((section) => (
+                <button
+                  key={section}
+                  type="button"
+                  onClick={() => setInspectorSection(section)}
+                  className={`rounded-[9px] px-3 py-1.5 text-[11px] capitalize transition ${
+                    inspectorSection === section
+                      ? "bg-white/[0.10] text-white"
+                      : "text-[var(--muted)]"
+                  }`}
+                >
+                  {section}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setRightPanelOpen(false)}
+              className="flex h-9 w-9 items-center justify-center rounded-[12px] text-[var(--muted)] transition hover:bg-white/[0.06] hover:text-white"
+            >
+              <Icon name="close" />
+            </button>
+          </div>
 
+          <div className="h-[calc(100%-4rem)] overflow-y-auto px-5 py-5">
             {selectedItem ? (
-              <div className="mt-4 space-y-5">
+              <div className="space-y-5">
                 <div className="rounded-[16px] border border-white/8 bg-[#101010] px-4 py-3">
-                  <div className="text-sm text-white">
-                    {selectedItem.type === "image" ? selectedItem.label : "Text layer"}
+                  <div className="truncate text-sm text-white">
+                    {selectedItem.type === "image" ? selectedItem.label : selectedItem.text.split("\n")[0] || "Text"}
                   </div>
                   <div className="mt-1 text-[11px] text-[var(--muted)]">
                     {selectedItem.type === "image" ? "Image" : "Text"}
                   </div>
                 </div>
 
-                <Field label="Position">
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="number"
-                      value={Math.round(selectedItem.x)}
-                      onChange={(event) =>
-                        patchSelectedItem((item) => ({
-                          ...item,
-                          x: clamp(Number(event.target.value) || item.x, 40, BOARD_SIZE.width - item.width - 40),
-                        }))
-                      }
-                      className="h-10 rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
-                    />
-                    <input
-                      type="number"
-                      value={Math.round(selectedItem.y)}
-                      onChange={(event) =>
-                        patchSelectedItem((item) => ({
-                          ...item,
-                          y: clamp(Number(event.target.value) || item.y, 40, BOARD_SIZE.height - item.height - 40),
-                        }))
-                      }
-                      className="h-10 rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
-                    />
-                  </div>
-                </Field>
-
-                <Field label="Size">
-                  <div className="grid grid-cols-2 gap-3">
-                    <input
-                      type="number"
-                      value={Math.round(selectedItem.width)}
-                      onChange={(event) =>
-                        patchSelectedItem((item) => ({
-                          ...item,
-                          width: clamp(
-                            Number(event.target.value) || item.width,
-                            item.type === "image" ? 180 : 160,
-                            BOARD_SIZE.width - item.x - 40,
-                          ),
-                        }))
-                      }
-                      className="h-10 rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
-                    />
-                    <input
-                      type="number"
-                      value={Math.round(selectedItem.height)}
-                      onChange={(event) =>
-                        patchSelectedItem((item) => ({
-                          ...item,
-                          height: clamp(
-                            Number(event.target.value) || item.height,
-                            item.type === "image" ? 180 : 90,
-                            BOARD_SIZE.height - item.y - 40,
-                          ),
-                        }))
-                      }
-                      className="h-10 rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
-                    />
-                  </div>
-                </Field>
-
-                <Field label="Rotation">
-                  <input
-                    type="range"
-                    min={-180}
-                    max={180}
-                    value={selectedItem.rotation}
-                    onChange={(event) =>
-                      patchSelectedItem((item) => ({
-                        ...item,
-                        rotation: Number(event.target.value),
-                      }))
-                    }
-                    className="w-full"
-                  />
-                </Field>
-
-                {selectedItem.type === "text" ? (
-                  <>
-                    <Field label="Content">
-                      <textarea
-                        value={selectedItem.text}
-                        onChange={(event) =>
-                          patchSelectedItem((item) =>
-                            item.type === "text"
-                              ? { ...item, text: event.target.value }
-                              : item,
-                          )
-                        }
-                        className="min-h-28 w-full rounded-[14px] border border-white/8 bg-[#101010] px-3 py-3 text-sm text-white outline-none"
-                      />
-                    </Field>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <Field label="Size">
+                {inspectorSection === "arrange" ? (
+                  <div className="space-y-5">
+                    <Field label="Position">
+                      <div className="grid grid-cols-2 gap-3">
                         <input
                           type="number"
-                          value={Math.round(selectedItem.fontSize)}
+                          value={Math.round(selectedItem.x)}
                           onChange={(event) =>
-                            patchSelectedItem((item) =>
-                              item.type === "text"
-                                ? { ...item, fontSize: Number(event.target.value) || item.fontSize }
-                                : item,
-                            )
+                            patchSelectedItem((item) => ({
+                              ...item,
+                              x: clamp(Number(event.target.value) || item.x, 40, BOARD_SIZE.width - item.width - 40),
+                            }))
                           }
-                          className="h-10 w-full rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
+                          className="h-10 rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
                         />
-                      </Field>
-                      <Field label="Weight">
                         <input
                           type="number"
-                          step={100}
-                          value={selectedItem.weight}
+                          value={Math.round(selectedItem.y)}
                           onChange={(event) =>
-                            patchSelectedItem((item) =>
-                              item.type === "text"
-                                ? {
-                                    ...item,
-                                    weight: clamp(
-                                      Number(event.target.value) || item.weight,
-                                      500,
-                                      800,
-                                    ) as TextItem["weight"],
-                                  }
-                                : item,
-                            )
+                            patchSelectedItem((item) => ({
+                              ...item,
+                              y: clamp(Number(event.target.value) || item.y, 40, BOARD_SIZE.height - item.height - 40),
+                            }))
                           }
-                          className="h-10 w-full rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
+                          className="h-10 rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
                         />
-                      </Field>
-                    </div>
-
-                    <Field label="Letter spacing">
-                      <input
-                        type="range"
-                        min={-4}
-                        max={4}
-                        step={0.1}
-                        value={selectedItem.letterSpacing}
-                        onChange={(event) =>
-                          patchSelectedItem((item) =>
-                            item.type === "text"
-                              ? { ...item, letterSpacing: Number(event.target.value) }
-                              : item,
-                          )
-                        }
-                        className="w-full"
-                      />
-                    </Field>
-
-                    <ColorPickerField
-                      label="Color"
-                      value={selectedItem.color}
-                      onChange={(color) =>
-                        patchSelectedItem((item) =>
-                          item.type === "text" ? { ...item, color } : item,
-                        )
-                      }
-                    />
-
-                    <Field label="Align">
-                      <div className="grid grid-cols-2 gap-2">
-                        <SurfaceButton
-                          onClick={() =>
-                            patchSelectedItem((item) =>
-                              item.type === "text" ? { ...item, align: "left" } : item,
-                            )
-                          }
-                          active={selectedItem.align === "left"}
-                        >
-                          Left
-                        </SurfaceButton>
-                        <SurfaceButton
-                          onClick={() =>
-                            patchSelectedItem((item) =>
-                              item.type === "text" ? { ...item, align: "center" } : item,
-                            )
-                          }
-                          active={selectedItem.align === "center"}
-                        >
-                          Center
-                        </SurfaceButton>
                       </div>
                     </Field>
-                  </>
-                ) : (
-                  <>
-                    <Field label="Label">
-                      <input
-                        value={selectedItem.label}
-                        onChange={(event) =>
-                          patchSelectedItem((item) =>
-                            item.type === "image"
-                              ? { ...item, label: event.target.value }
-                              : item,
-                          )
-                        }
-                        className="h-10 w-full rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
-                      />
-                    </Field>
 
-                    <Field label="Aspect ratio">
-                      <SurfaceButton
-                        onClick={() =>
-                          patchSelectedItem((item) =>
-                            item.type === "image"
-                              ? { ...item, aspectRatioLocked: !item.aspectRatioLocked }
-                              : item,
-                          )
-                        }
-                        active={selectedItem.aspectRatioLocked}
-                      >
-                        <Icon
-                          name={selectedItem.aspectRatioLocked ? "lock" : "globe"}
-                          className="h-4 w-4"
+                    <Field label="Size">
+                      <div className="grid grid-cols-2 gap-3">
+                        <input
+                          type="number"
+                          value={Math.round(selectedItem.width)}
+                          onChange={(event) =>
+                            patchSelectedItem((item) => ({
+                              ...item,
+                              width: clamp(
+                                Number(event.target.value) || item.width,
+                                item.type === "image" ? 180 : 120,
+                                BOARD_SIZE.width - item.x - 40,
+                              ),
+                            }))
+                          }
+                          className="h-10 rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
                         />
-                        {selectedItem.aspectRatioLocked ? "Locked" : "Unlocked"}
-                      </SurfaceButton>
+                        <input
+                          type="number"
+                          value={Math.round(selectedItem.height)}
+                          onChange={(event) =>
+                            patchSelectedItem((item) => ({
+                              ...item,
+                              height: clamp(
+                                Number(event.target.value) || item.height,
+                                item.type === "image" ? 120 : 44,
+                                BOARD_SIZE.height - item.y - 40,
+                              ),
+                            }))
+                          }
+                          className="h-10 rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
+                        />
+                      </div>
                     </Field>
 
-                    <Field label={`Crop X ${Math.round(selectedItem.cropX)}px`}>
-                      <input
-                        type="range"
-                        min={-180}
-                        max={180}
-                        value={selectedItem.cropX}
-                        onChange={(event) =>
-                          patchSelectedItem((item) =>
-                            item.type === "image"
-                              ? { ...item, cropX: Number(event.target.value) }
-                              : item,
-                          )
-                        }
-                        className="w-full"
-                      />
+                    <Field label="Rotation">
+                      <div className="space-y-3">
+                        <input
+                          type="range"
+                          min={-180}
+                          max={180}
+                          value={selectedItem.rotation}
+                          onChange={(event) =>
+                            patchSelectedItem((item) => ({
+                              ...item,
+                              rotation: normalizeRotation(Number(event.target.value)),
+                            }))
+                          }
+                          className="w-full"
+                        />
+                        <div className="grid grid-cols-3 gap-2">
+                          <SurfaceButton
+                            compact
+                            onClick={() =>
+                              patchSelectedItem((item) => ({
+                                ...item,
+                                rotation: normalizeRotation(item.rotation - 90),
+                              }))
+                            }
+                          >
+                            -90
+                          </SurfaceButton>
+                          <SurfaceButton
+                            compact
+                            onClick={() =>
+                              patchSelectedItem((item) => ({ ...item, rotation: 0 }))
+                            }
+                          >
+                            Reset
+                          </SurfaceButton>
+                          <SurfaceButton
+                            compact
+                            onClick={() =>
+                              patchSelectedItem((item) => ({
+                                ...item,
+                                rotation: normalizeRotation(item.rotation + 90),
+                              }))
+                            }
+                          >
+                            +90
+                          </SurfaceButton>
+                        </div>
+                      </div>
                     </Field>
+                  </div>
+                ) : null}
 
-                    <Field label={`Crop Y ${Math.round(selectedItem.cropY)}px`}>
-                      <input
-                        type="range"
-                        min={-180}
-                        max={180}
-                        value={selectedItem.cropY}
-                        onChange={(event) =>
-                          patchSelectedItem((item) =>
-                            item.type === "image"
-                              ? { ...item, cropY: Number(event.target.value) }
-                              : item,
-                          )
-                        }
-                        className="w-full"
-                      />
-                    </Field>
-
-                    <Field label={`Crop Zoom ${selectedItem.cropScale.toFixed(2)}x`}>
-                      <input
-                        type="range"
-                        min={1}
-                        max={2.4}
-                        step={0.02}
-                        value={selectedItem.cropScale}
-                        onChange={(event) =>
-                          patchSelectedItem((item) =>
-                            item.type === "image"
-                              ? { ...item, cropScale: Number(event.target.value) }
-                              : item,
-                          )
-                        }
-                        className="w-full"
-                      />
+                {inspectorSection === "appearance" && selectedItem.type === "image" ? (
+                  <div className="space-y-5">
+                    <Field label="Crop">
+                      <div className="grid gap-3">
+                        <input
+                          type="range"
+                          min={-180}
+                          max={180}
+                          value={selectedItem.cropX}
+                          onChange={(event) =>
+                            patchSelectedItem((item) =>
+                              item.type === "image"
+                                ? { ...item, cropX: Number(event.target.value) }
+                                : item,
+                            )
+                          }
+                          className="w-full"
+                        />
+                        <input
+                          type="range"
+                          min={-180}
+                          max={180}
+                          value={selectedItem.cropY}
+                          onChange={(event) =>
+                            patchSelectedItem((item) =>
+                              item.type === "image"
+                                ? { ...item, cropY: Number(event.target.value) }
+                                : item,
+                            )
+                          }
+                          className="w-full"
+                        />
+                        <input
+                          type="range"
+                          min={1}
+                          max={2.4}
+                          step={0.02}
+                          value={selectedItem.cropScale}
+                          onChange={(event) =>
+                            patchSelectedItem((item) =>
+                              item.type === "image"
+                                ? { ...item, cropScale: Number(event.target.value) }
+                                : item,
+                            )
+                          }
+                          className="w-full"
+                        />
+                      </div>
                     </Field>
 
                     <div className="grid grid-cols-2 gap-3">
@@ -2425,11 +2677,181 @@ export function MoodboardStudio({
                         />
                       </Field>
                     </div>
-                  </>
-                )}
+
+                    <div className="grid gap-2">
+                      <SurfaceButton
+                        onClick={() =>
+                          patchSelectedItem((item) =>
+                            item.type === "image"
+                              ? { ...item, aspectRatioLocked: !item.aspectRatioLocked }
+                              : item,
+                          )
+                        }
+                        active={selectedItem.aspectRatioLocked}
+                      >
+                        <Icon name="lock" className="h-4 w-4" />
+                        Lock aspect ratio
+                      </SurfaceButton>
+                      <SurfaceButton
+                        onClick={() =>
+                          patchSelectedItem((item) =>
+                            item.type === "image"
+                              ? {
+                                  ...item,
+                                  width: item.originalWidth,
+                                  height: item.originalHeight,
+                                }
+                              : item,
+                          )
+                        }
+                      >
+                        <Icon name="reset" className="h-4 w-4" />
+                        Reset to original ratio
+                      </SurfaceButton>
+                      <SurfaceButton
+                        onClick={() =>
+                          patchSelectedItem((item) =>
+                            item.type === "image"
+                              ? { ...item, cropX: 0, cropY: 0, cropScale: 1 }
+                              : item,
+                          )
+                        }
+                      >
+                        <Icon name="fit" className="h-4 w-4" />
+                        Reset crop
+                      </SurfaceButton>
+                    </div>
+                  </div>
+                ) : null}
+
+                {inspectorSection === "content" && selectedItem.type === "text" ? (
+                  <div className="space-y-5">
+                    <Field label="Content">
+                      <textarea
+                        value={selectedItem.text}
+                        onChange={(event) =>
+                          patchSelectedItem((item) =>
+                            item.type === "text"
+                              ? { ...item, text: event.target.value }
+                              : item,
+                          )
+                        }
+                        className="min-h-32 w-full rounded-[14px] border border-white/8 bg-[#101010] px-3 py-3 text-sm text-white outline-none"
+                      />
+                    </Field>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Size">
+                        <input
+                          type="number"
+                          value={Math.round(selectedItem.fontSize)}
+                          onChange={(event) =>
+                            patchSelectedItem((item) =>
+                              item.type === "text"
+                                ? { ...item, fontSize: Number(event.target.value) || item.fontSize }
+                                : item,
+                            )
+                          }
+                          className="h-10 w-full rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
+                        />
+                      </Field>
+                      <Field label="Weight">
+                        <input
+                          type="number"
+                          step={100}
+                          value={selectedItem.weight}
+                          onChange={(event) =>
+                            patchSelectedItem((item) =>
+                              item.type === "text"
+                                ? {
+                                    ...item,
+                                    weight: clamp(
+                                      Number(event.target.value) || item.weight,
+                                      500,
+                                      800,
+                                    ) as TextItem["weight"],
+                                  }
+                                : item,
+                            )
+                          }
+                          className="h-10 w-full rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
+                        />
+                      </Field>
+                    </div>
+
+                    <Field label="Spacing">
+                      <input
+                        type="range"
+                        min={-4}
+                        max={4}
+                        step={0.1}
+                        value={selectedItem.letterSpacing}
+                        onChange={(event) =>
+                          patchSelectedItem((item) =>
+                            item.type === "text"
+                              ? { ...item, letterSpacing: Number(event.target.value) }
+                              : item,
+                          )
+                        }
+                        className="w-full"
+                      />
+                    </Field>
+
+                    <ColorPickerField
+                      label="Color"
+                      value={selectedItem.color}
+                      onChange={(color) =>
+                        patchSelectedItem((item) =>
+                          item.type === "text" ? { ...item, color } : item,
+                        )
+                      }
+                    />
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <SurfaceButton
+                        onClick={() =>
+                          patchSelectedItem((item) =>
+                            item.type === "text" ? { ...item, align: "left" } : item,
+                          )
+                        }
+                        active={selectedItem.align === "left"}
+                      >
+                        Left
+                      </SurfaceButton>
+                      <SurfaceButton
+                        onClick={() =>
+                          patchSelectedItem((item) =>
+                            item.type === "text" ? { ...item, align: "center" } : item,
+                          )
+                        }
+                        active={selectedItem.align === "center"}
+                      >
+                        Center
+                      </SurfaceButton>
+                    </div>
+                  </div>
+                ) : null}
+
+                {selectedItem.type === "image" && inspectorSection === "content" ? (
+                  <div className="space-y-5">
+                    <Field label="Label">
+                      <input
+                        value={selectedItem.label}
+                        onChange={(event) =>
+                          patchSelectedItem((item) =>
+                            item.type === "image"
+                              ? { ...item, label: event.target.value }
+                              : item,
+                          )
+                        }
+                        className="h-10 w-full rounded-[12px] border border-white/8 bg-[#101010] px-3 text-sm text-white outline-none"
+                      />
+                    </Field>
+                  </div>
+                ) : null}
               </div>
             ) : (
-              <div className="mt-4 space-y-5">
+              <div className="space-y-5">
                 <Field label="Name">
                   <input
                     value={activeWorkspace.name}
@@ -2467,51 +2889,34 @@ export function MoodboardStudio({
                   }
                 />
 
-                <Field label="Access">
-                  <div className="grid gap-2">
-                    <SurfaceButton
-                      onClick={() =>
-                        patchActiveWorkspace((workspace) => ({
-                          ...workspace,
-                          shared: !workspace.shared,
-                        }))
-                      }
-                      active={activeWorkspace.shared}
-                    >
-                      <Icon
-                        name={activeWorkspace.shared ? "globe" : "lock"}
-                        className="h-4 w-4"
-                      />
-                      {activeWorkspace.shared ? "Shared board" : "Private board"}
-                    </SurfaceButton>
-                    <SurfaceButton onClick={fitBoardToView}>
-                      <Icon name="fit" className="h-4 w-4" />
-                      Fit board
-                    </SurfaceButton>
-                    <SurfaceButton
-                      danger
-                      onClick={() => void handleDeleteWorkspace(activeWorkspace.id)}
-                    >
-                      <Icon name="trash" className="h-4 w-4" />
-                      Delete board
-                    </SurfaceButton>
-                  </div>
-                </Field>
-
-                <Field label="Collaborators">
-                  <div className="rounded-[16px] border border-white/8 bg-[#101010] px-4 py-4">
-                    <div className="flex flex-wrap gap-2">
-                      {activeWorkspace.collaborators.map((person, index) => (
-                        <div
-                          key={`${person}-${index}`}
-                          className="flex h-8 items-center justify-center rounded-full border border-white/10 bg-black/30 px-3 text-[11px] text-white"
-                        >
-                          {person}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </Field>
+                <div className="grid gap-2">
+                  <SurfaceButton
+                    onClick={() =>
+                      patchActiveWorkspace((workspace) => ({
+                        ...workspace,
+                        shared: !workspace.shared,
+                      }))
+                    }
+                    active={activeWorkspace.shared}
+                  >
+                    <Icon
+                      name={activeWorkspace.shared ? "globe" : "lock"}
+                      className="h-4 w-4"
+                    />
+                    {activeWorkspace.shared ? "Shared" : "Private"}
+                  </SurfaceButton>
+                  <SurfaceButton onClick={fitBoardToView}>
+                    <Icon name="fit" className="h-4 w-4" />
+                    Fit board
+                  </SurfaceButton>
+                  <SurfaceButton
+                    danger
+                    onClick={() => void handleDeleteWorkspace(activeWorkspace.id)}
+                  >
+                    <Icon name="trash" className="h-4 w-4" />
+                    Delete board
+                  </SurfaceButton>
+                </div>
               </div>
             )}
           </div>
@@ -2540,6 +2945,19 @@ export function MoodboardStudio({
                 <Icon name="text" className="h-4 w-4 text-[var(--muted)]" />
                 Add text
               </button>
+              {clipboardItem ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    pasteClipboardItem();
+                    setContextMenu(null);
+                  }}
+                  className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition hover:bg-white/[0.06]"
+                >
+                  <Icon name="paste" className="h-4 w-4 text-[var(--muted)]" />
+                  Paste
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => {
@@ -2581,6 +2999,17 @@ export function MoodboardStudio({
               <button
                 type="button"
                 onClick={() => {
+                  copySelectedItem();
+                  setContextMenu(null);
+                }}
+                className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition hover:bg-white/[0.06]"
+              >
+                <Icon name="copy" className="h-4 w-4 text-[var(--muted)]" />
+                Copy layer
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   duplicateSelectedItem();
                   setContextMenu(null);
                 }}
@@ -2588,6 +3017,17 @@ export function MoodboardStudio({
               >
                 <Icon name="duplicate" className="h-4 w-4 text-[var(--muted)]" />
                 Duplicate layer
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  patchSelectedItem((item) => ({ ...item, rotation: 0 }));
+                  setContextMenu(null);
+                }}
+                className="flex w-full items-center gap-3 px-4 py-2 text-left text-sm text-white transition hover:bg-white/[0.06]"
+              >
+                <Icon name="reset" className="h-4 w-4 text-[var(--muted)]" />
+                Reset rotation
               </button>
               <button
                 type="button"

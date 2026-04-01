@@ -3,7 +3,7 @@ export const BOARD_SIZE = {
   height: 3600,
 } as const;
 
-export const MIN_ZOOM = 0.45;
+export const MIN_ZOOM = 0.12;
 export const MAX_ZOOM = 1.9;
 
 export type CanvasView = {
@@ -26,6 +26,8 @@ export type ImageItem = BaseItem & {
   type: "image";
   src: string;
   label: string;
+  originalWidth: number;
+  originalHeight: number;
   cropX: number;
   cropY: number;
   cropScale: number;
@@ -115,6 +117,8 @@ export const initialAppState: AppState = {
           height: 540,
           zIndex: 4,
           rotation: 0,
+          originalWidth: 420,
+          originalHeight: 540,
           cropX: 0,
           cropY: 0,
           cropScale: 1,
@@ -133,6 +137,8 @@ export const initialAppState: AppState = {
           height: 360,
           zIndex: 5,
           rotation: 0,
+          originalWidth: 300,
+          originalHeight: 360,
           cropX: 0,
           cropY: 0,
           cropScale: 1.1,
@@ -151,6 +157,8 @@ export const initialAppState: AppState = {
           height: 420,
           zIndex: 2,
           rotation: 0,
+          originalWidth: 360,
+          originalHeight: 420,
           cropX: 0,
           cropY: -18,
           cropScale: 1.08,
@@ -218,6 +226,8 @@ export const initialAppState: AppState = {
           height: 610,
           zIndex: 4,
           rotation: 0,
+          originalWidth: 470,
+          originalHeight: 610,
           cropX: 0,
           cropY: 0,
           cropScale: 1,
@@ -236,6 +246,8 @@ export const initialAppState: AppState = {
           height: 320,
           zIndex: 5,
           rotation: 0,
+          originalWidth: 380,
+          originalHeight: 320,
           cropX: 0,
           cropY: 0,
           cropScale: 1.08,
@@ -303,6 +315,8 @@ export const initialAppState: AppState = {
           height: 570,
           zIndex: 4,
           rotation: 0,
+          originalWidth: 430,
+          originalHeight: 570,
           cropX: 0,
           cropY: 0,
           cropScale: 1.03,
@@ -321,6 +335,8 @@ export const initialAppState: AppState = {
           height: 390,
           zIndex: 5,
           rotation: 0,
+          originalWidth: 310,
+          originalHeight: 390,
           cropX: 16,
           cropY: 0,
           cropScale: 1.18,
