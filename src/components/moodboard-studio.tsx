@@ -553,7 +553,7 @@ function SurfaceButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className={`inline-flex items-center justify-center gap-2 rounded-[12px] border px-3 text-sm transition ${
+      className={`motion-button inline-flex items-center justify-center gap-2 rounded-[12px] border px-3 text-sm ${
         compact ? "h-9" : "h-10"
       } ${
         danger
@@ -584,7 +584,7 @@ function ToolButton({
       type="button"
       title={label}
       onClick={onClick}
-      className={`flex h-11 w-11 items-center justify-center rounded-[12px] border transition ${
+      className={`motion-button flex h-11 w-11 items-center justify-center rounded-[12px] border ${
         active
           ? "border-white/16 bg-white/[0.10] text-white"
           : "border-white/8 bg-[#111111] text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
@@ -611,7 +611,7 @@ function WorkspaceRow({
       type="button"
       onClick={onClick}
       onContextMenu={onContextMenu}
-      className={`w-full border-b px-4 py-3 text-left transition ${
+      className={`motion-button w-full border-b px-4 py-3 text-left ${
         active
           ? "border-white/10 bg-white/[0.06] text-white"
           : "border-white/6 text-[var(--muted)] hover:bg-white/[0.04] hover:text-white"
@@ -725,7 +725,7 @@ function MiniMap({
   const viewportY = clamp(-workspace.view.panY / workspace.view.zoom, 0, BOARD_SIZE.height);
 
   return (
-    <div className="absolute bottom-4 right-4 z-20 hidden rounded-[18px] border border-white/8 bg-[#0d0d0d]/92 p-3 backdrop-blur md:block">
+    <div className="motion-pop absolute bottom-4 right-4 z-20 hidden rounded-[18px] border border-white/8 bg-[#0d0d0d]/92 p-3 backdrop-blur md:block">
       <div className="mb-2 flex items-center justify-between text-[11px] text-[var(--muted)]">
         <span>Overview</span>
         <button
@@ -2104,7 +2104,7 @@ export function MoodboardStudio({
       />
 
       <div
-        className="grid h-full transition-[grid-template-columns] duration-200"
+        className="grid h-full transition-[grid-template-columns] duration-300 ease-out"
         style={{
           gridTemplateColumns: `72px ${leftPanelOpen ? "236px" : "0px"} minmax(0,1fr) ${
             rightPanelOpen ? "320px" : "0px"
@@ -2155,9 +2155,10 @@ export function MoodboardStudio({
         </aside>
 
         <aside
-          className={`min-h-0 overflow-hidden border-r border-white/8 bg-[#0b0b0b] ${
+          className={`motion-panel min-h-0 overflow-hidden border-r border-white/8 bg-[#0b0b0b] ${
             leftPanelOpen ? "opacity-100" : "opacity-0"
           }`}
+          style={{ transform: leftPanelOpen ? "translateX(0)" : "translateX(-8px)" }}
         >
           <div className="flex h-16 items-center justify-between border-b border-white/8 px-4">
             <div className="text-[14px] text-white">Boards</div>
@@ -2200,7 +2201,7 @@ export function MoodboardStudio({
             </button>
             <div className="relative">
               {isProfileMenuOpen ? (
-                <div className="absolute right-0 top-14 min-w-[220px] overflow-hidden rounded-[16px] border border-white/8 bg-[#101010] py-2 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
+                <div className="motion-pop absolute right-0 top-14 min-w-[220px] overflow-hidden rounded-[16px] border border-white/8 bg-[#101010] py-2 shadow-[0_30px_80px_rgba(0,0,0,0.55)]">
                   <div className="px-4 py-2">
                     <div className="text-sm text-white">{currentUserName}</div>
                     <div className="mt-1 text-[12px] text-[var(--muted)]">{syncMessage}</div>
@@ -2284,7 +2285,7 @@ export function MoodboardStudio({
                           startEditingText(item.id);
                         }
                       }}
-                      className="group absolute"
+                      className="motion-item group absolute"
                       style={{
                         left: item.x,
                         top: item.y,
@@ -2361,16 +2362,16 @@ export function MoodboardStudio({
 
                       {isSelected ? (
                         <>
-                          <div className="pointer-events-none absolute inset-[-6px] rounded-[8px] border border-white/40" />
+                          <div className="selection-ring pointer-events-none absolute inset-[-6px] rounded-[8px] border border-white/40" />
                           <div
                             data-handle="rotate"
-                            className="absolute left-1/2 top-[-30px] h-4 w-4 -translate-x-1/2 rounded-full border border-white/16 bg-[#101010]"
+                            className="selection-handle absolute left-1/2 top-[-30px] h-4 w-4 -translate-x-1/2 rounded-full border border-white/16 bg-[#101010]"
                           />
                           {(["nw", "ne", "sw", "se"] as ResizeHandle[]).map((handle) => (
                             <div
                               key={handle}
                               data-handle={handle}
-                              className={`absolute h-3 w-3 rounded-full border border-[#050505] bg-white ${
+                              className={`selection-handle absolute h-3 w-3 rounded-full border border-[#050505] bg-white ${
                                 handle === "nw"
                                   ? "left-[-6px] top-[-6px]"
                                   : handle === "ne"
@@ -2388,25 +2389,25 @@ export function MoodboardStudio({
                 })}
             </div>
 
-            <div className="absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-[14px] border border-white/8 bg-[#0d0d0d]/92 px-2 py-2 backdrop-blur">
+            <div className="motion-pop absolute bottom-4 left-4 z-20 flex items-center gap-2 rounded-[14px] border border-white/8 bg-[#0d0d0d]/92 px-2 py-2 backdrop-blur">
               <button
                 type="button"
                 onClick={() => updateZoom(activeWorkspace.view.zoom - 0.1)}
-                className="flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--muted)] transition hover:bg-white/[0.06] hover:text-white"
+                className="motion-button flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
               >
                 <Icon name="minus" className="h-4 w-4" />
               </button>
               <button
                 type="button"
                 onClick={fitBoardToView}
-                className="min-w-[56px] text-[12px] text-[var(--muted)] transition hover:text-white"
+                className="motion-button min-w-[56px] rounded-[10px] px-2 text-[12px] text-[var(--muted)] hover:text-white"
               >
                 {Math.round(activeWorkspace.view.zoom * 100)}%
               </button>
               <button
                 type="button"
                 onClick={() => updateZoom(activeWorkspace.view.zoom + 0.1)}
-                className="flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--muted)] transition hover:bg-white/[0.06] hover:text-white"
+                className="motion-button flex h-8 w-8 items-center justify-center rounded-[10px] text-[var(--muted)] hover:bg-white/[0.06] hover:text-white"
               >
                 <Icon name="plus" className="h-4 w-4" />
               </button>
@@ -2416,7 +2417,7 @@ export function MoodboardStudio({
 
             {isDraggingFiles ? (
               <div className="absolute inset-5 z-30 flex items-center justify-center border border-dashed border-white/16 bg-black/76">
-                <div className="rounded-[16px] border border-white/8 bg-[#111111] px-5 py-3 text-sm text-[var(--muted)]">
+                <div className="motion-pop rounded-[16px] border border-white/8 bg-[#111111] px-5 py-3 text-sm text-[var(--muted)]">
                   Drop images
                 </div>
               </div>
@@ -2425,9 +2426,10 @@ export function MoodboardStudio({
         </section>
 
         <aside
-          className={`min-h-0 overflow-hidden border-l border-white/8 bg-[#0b0b0b] ${
+          className={`motion-panel min-h-0 overflow-hidden border-l border-white/8 bg-[#0b0b0b] ${
             rightPanelOpen ? "opacity-100" : "opacity-0"
           }`}
+          style={{ transform: rightPanelOpen ? "translateX(0)" : "translateX(8px)" }}
         >
           <div className="flex h-16 items-center justify-between border-b border-white/8 px-5">
             <div className="flex items-center gap-1 rounded-[12px] border border-white/8 bg-[#101010] p-1">
@@ -2925,7 +2927,7 @@ export function MoodboardStudio({
 
       {contextMenu ? (
         <div
-          className="fixed z-50 min-w-[220px] overflow-hidden rounded-[16px] border border-white/8 bg-[#101010] py-2 shadow-[0_30px_80px_rgba(0,0,0,0.55)]"
+          className="motion-pop fixed z-50 min-w-[220px] overflow-hidden rounded-[16px] border border-white/8 bg-[#101010] py-2 shadow-[0_30px_80px_rgba(0,0,0,0.55)]"
           style={{
             left: contextMenu.x,
             top: contextMenu.y,
@@ -3086,7 +3088,7 @@ export function MoodboardStudio({
 
       {isShareOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-          <div className="w-full max-w-[760px] overflow-hidden rounded-[24px] border border-white/8 bg-[#0c0c0c] shadow-[0_40px_120px_rgba(0,0,0,0.55)]">
+          <div className="motion-pop w-full max-w-[760px] overflow-hidden rounded-[24px] border border-white/8 bg-[#0c0c0c] shadow-[0_40px_120px_rgba(0,0,0,0.55)]">
             <div className="flex items-center justify-between border-b border-white/8 px-5 py-4">
               <div>
                 <div className="text-[15px] text-white">{activeWorkspace.name}</div>
