@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f3eee4;
+  --background-strong: #f8f4ec;
+  --foreground: #221d17;
+  --muted: #766a5d;
+  --line: rgba(50, 40, 31, 0.12);
+  --panel: rgba(255, 251, 245, 0.86);
+  --panel-strong: rgba(255, 251, 245, 0.94);
+  --accent: #d46c4e;
+  --accent-soft: rgba(212, 108, 78, 0.14);
+  --canvas-grid: rgba(71, 58, 44, 0.1);
+  --font-app-sans: "Avenir Next", "Plus Jakarta Sans", "Segoe UI", sans-serif;
+  --font-app-mono: "SFMono-Regular", "IBM Plex Mono", "Cascadia Code", monospace;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-app-sans);
+  --font-mono: var(--font-app-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 34%),
+    linear-gradient(180deg, #f7f2e9 0%, #efe7dc 100%);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-app-sans);
+}
+
+a {
+  color: inherit;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+textarea {
+  resize: none;
+}
+
+::selection {
+  background: rgba(212, 108, 78, 0.18);
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+.canvas-grid {
+  background-color: #f7f3eb;
+  background-image:
+    linear-gradient(var(--canvas-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.canvas-dots {
+  background-image: radial-gradient(circle, rgba(44, 36, 28, 0.16) 1.5px, transparent 1.5px);
+  background-size: 80px 80px;
+}
