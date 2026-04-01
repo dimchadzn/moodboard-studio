@@ -19,6 +19,7 @@ type BaseItem = {
   width: number;
   height: number;
   zIndex: number;
+  rotation: number;
 };
 
 export type ImageItem = BaseItem & {
@@ -30,6 +31,7 @@ export type ImageItem = BaseItem & {
   cropScale: number;
   borderRadius: number;
   shadow: number;
+  aspectRatioLocked: boolean;
 };
 
 export type TextItem = BaseItem & {
@@ -46,6 +48,7 @@ export type BoardItem = ImageItem | TextItem;
 
 export type Workspace = {
   id: string;
+  ownerId: string | null;
   name: string;
   description: string;
   accent: string;
@@ -76,6 +79,7 @@ export const initialAppState: AppState = {
   workspaces: [
     {
       id: "brand-sprint",
+      ownerId: null,
       name: "Brand Sprint",
       description: "Editorial direction and image rhythm.",
       accent: "#d0cbc1",
@@ -93,6 +97,7 @@ export const initialAppState: AppState = {
           width: 500,
           height: 220,
           zIndex: 1,
+          rotation: 0,
           color: "#f2efe8",
           fontSize: 76,
           weight: 800,
@@ -109,11 +114,13 @@ export const initialAppState: AppState = {
           width: 420,
           height: 540,
           zIndex: 4,
+          rotation: 0,
           cropX: 0,
           cropY: 0,
           cropScale: 1,
           borderRadius: 6,
           shadow: 18,
+          aspectRatioLocked: true,
         },
         {
           id: "brand-image-2",
@@ -125,11 +132,13 @@ export const initialAppState: AppState = {
           width: 300,
           height: 360,
           zIndex: 5,
+          rotation: 0,
           cropX: 0,
           cropY: 0,
           cropScale: 1.1,
           borderRadius: 4,
           shadow: 14,
+          aspectRatioLocked: true,
         },
         {
           id: "brand-image-3",
@@ -141,11 +150,13 @@ export const initialAppState: AppState = {
           width: 360,
           height: 420,
           zIndex: 2,
+          rotation: 0,
           cropX: 0,
           cropY: -18,
           cropScale: 1.08,
           borderRadius: 5,
           shadow: 16,
+          aspectRatioLocked: true,
         },
         {
           id: "brand-note",
@@ -156,6 +167,7 @@ export const initialAppState: AppState = {
           width: 420,
           height: 150,
           zIndex: 3,
+          rotation: 0,
           color: "#9d978d",
           fontSize: 28,
           weight: 600,
@@ -166,6 +178,7 @@ export const initialAppState: AppState = {
     },
     {
       id: "interior-direction",
+      ownerId: null,
       name: "Interior Direction",
       description: "Spatial references and interior mood.",
       accent: "#a59e93",
@@ -187,6 +200,7 @@ export const initialAppState: AppState = {
           width: 460,
           height: 180,
           zIndex: 1,
+          rotation: 0,
           color: "#f2efe8",
           fontSize: 74,
           weight: 800,
@@ -203,11 +217,13 @@ export const initialAppState: AppState = {
           width: 470,
           height: 610,
           zIndex: 4,
+          rotation: 0,
           cropX: 0,
           cropY: 0,
           cropScale: 1,
           borderRadius: 6,
           shadow: 18,
+          aspectRatioLocked: true,
         },
         {
           id: "interior-image-2",
@@ -219,11 +235,13 @@ export const initialAppState: AppState = {
           width: 380,
           height: 320,
           zIndex: 5,
+          rotation: 0,
           cropX: 0,
           cropY: 0,
           cropScale: 1.08,
           borderRadius: 4,
           shadow: 14,
+          aspectRatioLocked: true,
         },
         {
           id: "interior-note",
@@ -234,6 +252,7 @@ export const initialAppState: AppState = {
           width: 500,
           height: 140,
           zIndex: 3,
+          rotation: 0,
           color: "#999287",
           fontSize: 27,
           weight: 600,
@@ -244,6 +263,7 @@ export const initialAppState: AppState = {
     },
     {
       id: "campaign-shoot",
+      ownerId: null,
       name: "Campaign Shoot",
       description: "Motion references and crop direction.",
       accent: "#beb8ad",
@@ -265,6 +285,7 @@ export const initialAppState: AppState = {
           width: 500,
           height: 200,
           zIndex: 1,
+          rotation: 0,
           color: "#f2efe8",
           fontSize: 80,
           weight: 800,
@@ -281,11 +302,13 @@ export const initialAppState: AppState = {
           width: 430,
           height: 570,
           zIndex: 4,
+          rotation: 0,
           cropX: 0,
           cropY: 0,
           cropScale: 1.03,
           borderRadius: 6,
           shadow: 18,
+          aspectRatioLocked: true,
         },
         {
           id: "campaign-image-2",
@@ -297,11 +320,13 @@ export const initialAppState: AppState = {
           width: 310,
           height: 390,
           zIndex: 5,
+          rotation: 0,
           cropX: 16,
           cropY: 0,
           cropScale: 1.18,
           borderRadius: 4,
           shadow: 14,
+          aspectRatioLocked: true,
         },
         {
           id: "campaign-note",
@@ -312,6 +337,7 @@ export const initialAppState: AppState = {
           width: 500,
           height: 140,
           zIndex: 2,
+          rotation: 0,
           color: "#9a9387",
           fontSize: 26,
           weight: 600,
