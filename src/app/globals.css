@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f3eee4;
-  --background-strong: #f8f4ec;
-  --foreground: #221d17;
-  --muted: #766a5d;
-  --line: rgba(50, 40, 31, 0.12);
-  --panel: rgba(255, 251, 245, 0.86);
-  --panel-strong: rgba(255, 251, 245, 0.94);
-  --accent: #d46c4e;
-  --accent-soft: rgba(212, 108, 78, 0.14);
-  --canvas-grid: rgba(71, 58, 44, 0.1);
-  --font-app-sans: "Avenir Next", "Plus Jakarta Sans", "Segoe UI", sans-serif;
+  --background: #0a0c0f;
+  --background-strong: #0f1217;
+  --foreground: #f5f7fa;
+  --muted: #8e97a3;
+  --line: rgba(255, 255, 255, 0.08);
+  --panel: rgba(16, 19, 24, 0.84);
+  --panel-strong: rgba(20, 24, 31, 0.96);
+  --accent: #87b6ff;
+  --accent-soft: rgba(135, 182, 255, 0.16);
+  --canvas-grid: rgba(255, 255, 255, 0.048);
+  --font-app-sans: "SF Pro Display", "Inter Tight", "Avenir Next", "Segoe UI", sans-serif;
   --font-app-mono: "SFMono-Regular", "IBM Plex Mono", "Cascadia Code", monospace;
 }
 
@@ -28,14 +28,16 @@
 
 html {
   background:
-    radial-gradient(circle at top left, rgba(255, 255, 255, 0.92), transparent 34%),
-    linear-gradient(180deg, #f7f2e9 0%, #efe7dc 100%);
+    radial-gradient(circle at top left, rgba(135, 182, 255, 0.1), transparent 26%),
+    radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.035), transparent 18%),
+    linear-gradient(180deg, #090b0e 0%, #0d1015 100%);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-app-sans);
+  min-height: 100vh;
 }
 
 a {
@@ -53,7 +55,7 @@ textarea {
 }
 
 ::selection {
-  background: rgba(212, 108, 78, 0.18);
+  background: rgba(135, 182, 255, 0.22);
 }
 
 input[type="range"] {
@@ -61,7 +63,7 @@ input[type="range"] {
 }
 
 .canvas-grid {
-  background-color: #f7f3eb;
+  background-color: #0d1014;
   background-image:
     linear-gradient(var(--canvas-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px);
@@ -69,6 +71,6 @@ input[type="range"] {
 }
 
 .canvas-dots {
-  background-image: radial-gradient(circle, rgba(44, 36, 28, 0.16) 1.5px, transparent 1.5px);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.12) 1.2px, transparent 1.2px);
   background-size: 80px 80px;
 }
