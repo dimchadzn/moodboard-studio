@@ -1,17 +1,17 @@
 @import "tailwindcss";
 
 :root {
-  --background: #0a0c0f;
-  --background-strong: #0f1217;
-  --foreground: #f5f7fa;
-  --muted: #8e97a3;
+  --background: #070707;
+  --background-strong: #0d0d0d;
+  --foreground: #f2efe8;
+  --muted: #8d877d;
   --line: rgba(255, 255, 255, 0.08);
-  --panel: rgba(16, 19, 24, 0.84);
-  --panel-strong: rgba(20, 24, 31, 0.96);
-  --accent: #d6dbe2;
-  --accent-soft: rgba(214, 219, 226, 0.14);
-  --canvas-grid: rgba(255, 255, 255, 0.048);
-  --font-app-sans: "SF Pro Display", "Inter Tight", "Avenir Next", "Segoe UI", sans-serif;
+  --panel: rgba(16, 16, 16, 0.9);
+  --panel-strong: rgba(18, 18, 18, 0.98);
+  --accent: #f2efe8;
+  --accent-soft: rgba(242, 239, 232, 0.14);
+  --canvas-grid: rgba(255, 255, 255, 0.038);
+  --font-app-sans: "SF Pro Display", "SF Pro Text", "Helvetica Neue", "Avenir Next", "Segoe UI", sans-serif;
   --font-app-mono: "SFMono-Regular", "IBM Plex Mono", "Cascadia Code", monospace;
 }
 
@@ -27,7 +27,7 @@
 }
 
 html {
-  background: linear-gradient(180deg, #090b0e 0%, #0d1015 100%);
+  background: #050505;
 }
 
 body {
@@ -52,7 +52,7 @@ textarea {
 }
 
 ::selection {
-  background: rgba(214, 219, 226, 0.22);
+  background: rgba(242, 239, 232, 0.18);
 }
 
 input[type="range"] {
@@ -60,7 +60,7 @@ input[type="range"] {
 }
 
 .canvas-grid {
-  background-color: #0d1014;
+  background-color: #080808;
   background-image:
     linear-gradient(var(--canvas-grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px);
@@ -68,6 +68,6 @@ input[type="range"] {
 }
 
 .canvas-dots {
-  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.12) 1.2px, transparent 1.2px);
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.1) 1.15px, transparent 1.15px);
   background-size: 80px 80px;
 }
