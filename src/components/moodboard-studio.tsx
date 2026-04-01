@@ -145,7 +145,7 @@ function ViewerBadge({
 }) {
   const toneClass =
     tone === "accent"
-      ? "border border-[var(--accent-soft)] bg-[rgba(135,182,255,0.12)] text-[var(--accent)]"
+      ? "border border-[var(--accent-soft)] bg-[var(--accent-soft)] text-[var(--accent)]"
       : tone === "muted"
         ? "border border-white/8 bg-white/4 text-[var(--muted)]"
         : "border border-white/8 bg-white/6 text-[var(--foreground)]";
@@ -225,6 +225,9 @@ export function MoodboardStudio({
   const [currentUser, setCurrentUser] = useState<User | null>(initialUser);
   const [isAuthLoading, setIsAuthLoading] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [shareNotice, setShareNotice] = useState<string | null>(null);
   const [supabase] = useState(() =>
     isSupabaseConfigured ? createSupabaseBrowserClient() : null,
   );
@@ -235,6 +238,10 @@ export function MoodboardStudio({
     currentUser?.user_metadata?.name ??
     currentUser?.email?.split("@")[0] ??
     appState.userName;
+  const currentBoardLink =
+    typeof window === "undefined"
+      ? `https://moodboard-studio-ochre.vercel.app/?board=${appState.activeWorkspaceId}`
+      : `${window.location.origin}/?board=${appState.activeWorkspaceId}`;
 
   const activeWorkspace =
     appState.workspaces.find(
@@ -632,6 +639,42 @@ export function MoodboardStudio({
     router.refresh();
   }
 
+  async function handleCopyBoardLink() {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const boardUrl = `${window.location.origin}/?board=${activeWorkspace.id}`;
+
+    try {
+      await navigator.clipboard.writeText(boardUrl);
+      setShareNotice("Link copied.");
+    } catch {
+      setShareNotice(boardUrl);
+    }
+  }
+
+  function handleInviteCollaborator() {
+    const email = inviteEmail.trim().toLowerCase();
+    if (!email) {
+      return;
+    }
+
+    const nextInitials = getInitials(email.replace(/@.*$/, ""));
+    const alreadyIncluded = activeWorkspace.collaborators.includes(nextInitials);
+
+    if (!alreadyIncluded) {
+      patchActiveWorkspace((workspace) => ({
+        ...workspace,
+        shared: true,
+        collaborators: [...workspace.collaborators, nextInitials],
+      }));
+    }
+
+    setInviteEmail("");
+    setShareNotice(`Invite prepared for ${email}.`);
+  }
+
   async function insertFiles(files: File[]) {
     if (files.length === 0) {
       return;
@@ -868,16 +911,16 @@ export function MoodboardStudio({
 
   if (!currentUser) {
     return (
-      <main className="relative flex min-h-screen overflow-hidden bg-[radial-gradient(circle_at_top,rgba(135,182,255,0.12),transparent_22%),linear-gradient(180deg,#090b0e_0%,#0c0f14_100%)] px-5 py-6 text-[var(--foreground)] sm:px-8">
-        <div className="relative mx-auto grid w-full max-w-[1440px] gap-6 lg:grid-cols-[0.88fr_1.12fr]">
-          <section className="flex flex-col justify-between rounded-[28px] border border-white/8 bg-[rgba(12,14,18,0.9)] p-8 shadow-[0_20px_70px_rgba(0,0,0,0.35)] md:p-10">
+      <main className="relative flex min-h-screen overflow-hidden bg-[linear-gradient(180deg,#090b0e_0%,#0c0f14_100%)] px-5 py-6 text-[var(--foreground)] sm:px-8">
+        <div className="relative mx-auto grid w-full max-w-[1440px] gap-4 lg:grid-cols-[0.82fr_1.18fr]">
+          <section className="flex flex-col justify-between rounded-[12px] border border-white/8 bg-[rgba(12,14,18,0.96)] p-8 shadow-[0_20px_70px_rgba(0,0,0,0.35)] md:p-10">
             <ViewerBadge tone="accent">Muse Board</ViewerBadge>
-            <h1 className="mt-6 max-w-xl text-5xl font-semibold tracking-[-0.06em] sm:text-6xl">
-              A clean board editor for references, image drops, and fast team review.
+            <h1 className="mt-6 max-w-xl text-5xl font-medium tracking-[-0.065em] sm:text-6xl">
+              Minimal moodboards. Precise canvas. No ornamental UI.
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-[var(--muted)]">
-              Built to feel familiar if you already use Figma: restrained chrome,
-              spacious canvas, minimal friction, and the essentials always in reach.
+              Built around the same editor instincts people like in pro design tools:
+              quiet chrome, direct manipulation, and a canvas that stays out of the way.
             </p>
 
             <div className="mt-8 grid gap-3 sm:grid-cols-3">
@@ -895,7 +938,7 @@ export function MoodboardStudio({
               >
                 {isAuthLoading ? "Connecting..." : "Continue with Google"}
               </button>
-              <div className="rounded-full border border-white/8 bg-white/4 px-5 py-3 text-sm text-[var(--muted)]">
+              <div className="rounded-[8px] border border-white/8 bg-white/4 px-5 py-3 text-sm text-[var(--muted)]">
                 {isSupabaseConfigured
                   ? "Google OAuth is connected through Supabase."
                   : "Add Supabase env vars to activate Google login."}
@@ -903,7 +946,7 @@ export function MoodboardStudio({
             </div>
 
             {authError ? (
-              <div className="mt-4 rounded-[18px] border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent)]">
+              <div className="mt-4 rounded-[10px] border border-[var(--accent)] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent)]">
                 {authError}
               </div>
             ) : null}
@@ -911,28 +954,28 @@ export function MoodboardStudio({
             <div className="mt-10 grid gap-3 text-sm text-[var(--muted)]">
               <p>Core flow</p>
               <div className="grid gap-2">
-                <div className="rounded-[16px] border border-white/8 bg-white/3 px-4 py-3">Drop images directly onto the canvas.</div>
-                <div className="rounded-[16px] border border-white/8 bg-white/3 px-4 py-3">Resize, crop, and annotate without leaving the board.</div>
-                <div className="rounded-[16px] border border-white/8 bg-white/3 px-4 py-3">Switch between workspaces for different moodboard directions.</div>
+                <div className="rounded-[8px] border border-white/8 bg-white/3 px-4 py-3">Drop images directly onto the canvas.</div>
+                <div className="rounded-[8px] border border-white/8 bg-white/3 px-4 py-3">Resize, crop, and annotate without leaving the board.</div>
+                <div className="rounded-[8px] border border-white/8 bg-white/3 px-4 py-3">Switch between workspaces for different moodboard directions.</div>
               </div>
             </div>
           </section>
 
-          <section className="rounded-[28px] border border-white/8 bg-[rgba(12,14,18,0.86)] p-5 shadow-[0_20px_70px_rgba(0,0,0,0.32)]">
+            <section className="rounded-[10px] border border-white/8 bg-[rgba(12,14,18,0.96)] p-4 shadow-[0_20px_70px_rgba(0,0,0,0.32)]">
             <div className="mb-4 flex items-center justify-between">
               <ViewerBadge tone="muted">Live editor preview</ViewerBadge>
               <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
-                dark minimal system
+                neutral graphite
               </span>
             </div>
-            <div className="overflow-hidden rounded-[22px] border border-white/8 bg-[#0f1318]">
+            <div className="overflow-hidden rounded-[10px] border border-white/8 bg-[#0f1318]">
               <div className="flex items-center justify-between border-b border-white/8 px-4 py-3">
                 <div className="flex items-center gap-2">
                   <div className="h-2.5 w-2.5 rounded-full bg-white/28" />
                   <div className="h-2.5 w-2.5 rounded-full bg-white/18" />
                   <div className="h-2.5 w-2.5 rounded-full bg-white/12" />
                 </div>
-                <div className="rounded-full border border-white/8 bg-white/4 px-3 py-1 text-[11px] text-[var(--muted)]">
+                <div className="rounded-[6px] border border-white/8 bg-white/4 px-3 py-1 text-[11px] text-[var(--muted)]">
                   Brand Sprint
                 </div>
               </div>
@@ -942,7 +985,7 @@ export function MoodboardStudio({
                     {["+", "T", "F", "S"].map((tool) => (
                       <div
                         key={tool}
-                        className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/8 bg-white/4 text-sm text-[var(--muted)]"
+                        className="flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/8 bg-white/4 text-sm text-[var(--muted)]"
                       >
                         {tool}
                       </div>
@@ -957,21 +1000,21 @@ export function MoodboardStudio({
                     <div className="absolute left-14 top-10 max-w-[11ch] text-5xl font-semibold tracking-[-0.06em] text-white">
                       Spring reset
                     </div>
-                    <div className="absolute left-[340px] top-12 h-[340px] w-[260px] overflow-hidden rounded-[28px] border border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
+                    <div className="absolute left-[340px] top-12 h-[340px] w-[260px] overflow-hidden rounded-[8px] border border-white/10 shadow-[0_24px_60px_rgba(0,0,0,0.35)]">
                       <img
                         src="https://images.unsplash.com/photo-1524758631624-e2822e304c36?auto=format&fit=crop&w=900&q=80"
                         alt="Editorial preview"
                         className="h-full w-full object-cover"
                       />
                     </div>
-                    <div className="absolute left-[640px] top-[180px] h-[220px] w-[180px] overflow-hidden rounded-[22px] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
+                    <div className="absolute left-[640px] top-[180px] h-[220px] w-[180px] overflow-hidden rounded-[8px] border border-white/10 shadow-[0_20px_50px_rgba(0,0,0,0.3)]">
                       <img
                         src="https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?auto=format&fit=crop&w=900&q=80"
                         alt="Portrait preview"
                         className="h-full w-full object-cover"
                       />
                     </div>
-                    <div className="absolute left-16 top-[360px] rounded-[24px] border border-white/8 bg-[rgba(17,21,27,0.78)] px-5 py-4 text-sm leading-7 text-[var(--muted)] backdrop-blur">
+                    <div className="absolute left-16 top-[360px] rounded-[8px] border border-white/8 bg-[rgba(17,21,27,0.78)] px-5 py-4 text-sm leading-7 text-[var(--muted)] backdrop-blur">
                       Keep the board spare, quiet, and focused on the references.
                     </div>
                   </div>
@@ -979,19 +1022,19 @@ export function MoodboardStudio({
                 <div className="bg-[#0e1217] p-4">
                   <div className="mb-4 text-sm font-medium text-white">Inspector</div>
                   <div className="space-y-3">
-                    <div className="rounded-[18px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[var(--muted)]">
+                    <div className="rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[var(--muted)]">
                       Selected frame
                     </div>
-                    <div className="space-y-2 rounded-[18px] border border-white/8 bg-white/3 p-4">
+                    <div className="space-y-2 rounded-[8px] border border-white/8 bg-white/3 p-4">
                       <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">Crop</div>
                       <div className="h-2 rounded-full bg-white/8" />
                       <div className="h-2 rounded-full bg-white/8" />
                       <div className="h-2 rounded-full bg-white/8" />
                     </div>
-                    <div className="space-y-2 rounded-[18px] border border-white/8 bg-white/3 p-4">
+                    <div className="space-y-2 rounded-[8px] border border-white/8 bg-white/3 p-4">
                       <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">Style</div>
-                      <div className="h-10 rounded-2xl border border-white/8 bg-white/4" />
-                      <div className="h-10 rounded-2xl border border-white/8 bg-white/4" />
+                      <div className="h-10 rounded-[8px] border border-white/8 bg-white/4" />
+                      <div className="h-10 rounded-[8px] border border-white/8 bg-white/4" />
                     </div>
                   </div>
                 </div>
@@ -1014,11 +1057,11 @@ export function MoodboardStudio({
         onChange={handleFileSelection}
       />
 
-      <div className="mb-4 flex items-center justify-between rounded-[22px] border border-white/8 bg-[rgba(14,17,22,0.88)] px-5 py-4 shadow-[0_16px_60px_rgba(0,0,0,0.28)] backdrop-blur">
+      <div className="mb-4 flex items-center justify-between rounded-[10px] border border-white/8 bg-[rgba(14,17,22,0.96)] px-4 py-3 shadow-[0_16px_60px_rgba(0,0,0,0.28)]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <ViewerBadge tone="accent">Muse Board</ViewerBadge>
-            <ViewerBadge tone="muted">Dark editor</ViewerBadge>
+            <ViewerBadge tone="muted">Editor</ViewerBadge>
           </div>
           <h1 className="mt-2 text-2xl font-semibold tracking-[-0.05em]">
             Moodboard studio
@@ -1034,9 +1077,10 @@ export function MoodboardStudio({
               Signed in as {currentUser.email ?? currentUserName}
             </p>
           </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-white/6 text-sm font-semibold text-white">
+          <div className="flex h-11 w-11 items-center justify-center rounded-[8px] border border-white/10 bg-white/6 text-sm font-semibold text-white">
             {getInitials(currentUserName)}
           </div>
+          <ToolbarButton onClick={() => setIsShareOpen(true)}>Share</ToolbarButton>
           <ToolbarButton onClick={() => void handleSignOut()}>
             {isAuthLoading ? "..." : "Sign out"}
           </ToolbarButton>
@@ -1044,7 +1088,7 @@ export function MoodboardStudio({
       </div>
 
       <div className="grid min-h-[calc(100vh-8.75rem)] gap-4 lg:grid-cols-[260px_minmax(0,1fr)_300px]">
-        <aside className="rounded-[20px] border border-white/8 bg-[rgba(14,17,22,0.86)] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.22)] backdrop-blur">
+        <aside className="rounded-[10px] border border-white/8 bg-[rgba(14,17,22,0.96)] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.22)]">
           <div className="flex items-center justify-between">
             <div>
               <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--muted)]">
@@ -1055,7 +1099,7 @@ export function MoodboardStudio({
             <button
               type="button"
               onClick={handleCreateWorkspace}
-              className="rounded-full border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition hover:bg-white/10"
+              className="rounded-[8px] border border-white/10 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] transition hover:bg-white/10"
             >
               New
             </button>
@@ -1066,7 +1110,7 @@ export function MoodboardStudio({
               value={workspaceQuery}
               onChange={(event) => setWorkspaceQuery(event.target.value)}
               placeholder="Search by title or mood"
-              className="w-full rounded-2xl border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/16"
+              className="w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none transition placeholder:text-white/28 focus:border-white/16"
             />
           </Field>
 
@@ -1078,7 +1122,7 @@ export function MoodboardStudio({
                   key={workspace.id}
                   type="button"
                   onClick={() => handleWorkspaceSwitch(workspace.id)}
-                  className={`w-full rounded-[24px] border p-4 text-left transition ${
+                  className={`w-full rounded-[8px] border p-4 text-left transition ${
                     isActive
                       ? "border-white/12 bg-white/8"
                       : "border-transparent bg-transparent hover:border-white/8 hover:bg-white/4"
@@ -1092,7 +1136,7 @@ export function MoodboardStudio({
                       </p>
                     </div>
                     <span
-                      className="mt-1 h-3 w-3 rounded-full"
+                      className="mt-1 h-3 w-3 rounded-[3px]"
                       style={{ backgroundColor: workspace.accent }}
                     />
                   </div>
@@ -1106,24 +1150,23 @@ export function MoodboardStudio({
             })}
 
             {filteredWorkspaces.length === 0 ? (
-              <div className="rounded-[18px] border border-dashed border-white/10 bg-white/3 px-4 py-8 text-center text-sm text-[var(--muted)]">
+              <div className="rounded-[8px] border border-dashed border-white/10 bg-white/3 px-4 py-8 text-center text-sm text-[var(--muted)]">
                 No workspace matches that search yet.
               </div>
             ) : null}
           </div>
 
-          <div className="mt-5 rounded-[18px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4 text-white">
+          <div className="mt-5 rounded-[8px] border border-white/8 bg-[rgba(255,255,255,0.03)] p-4 text-white">
             <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-white/60">
               Collaboration
             </p>
             <p className="mt-3 text-sm leading-7 text-white/76">
-              Google auth is live. Shared boards, presence cursors, and true realtime
-              sync are the next backend step.
+              Share links and invite prep are here. Realtime multi-user sync is the next backend step.
             </p>
           </div>
         </aside>
 
-        <section className="flex min-h-[720px] flex-col rounded-[20px] border border-white/8 bg-[rgba(13,16,21,0.9)] shadow-[0_16px_60px_rgba(0,0,0,0.24)] backdrop-blur">
+        <section className="flex min-h-[720px] flex-col rounded-[10px] border border-white/8 bg-[rgba(13,16,21,0.96)] shadow-[0_16px_60px_rgba(0,0,0,0.24)]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-white/8 px-4 py-4">
             <div>
               <div className="flex items-center gap-2">
@@ -1149,16 +1192,9 @@ export function MoodboardStudio({
                 Duplicate
               </ToolbarButton>
               <ToolbarButton
-                onClick={() =>
-                  patchActiveWorkspace(
-                    (workspace) => ({
-                      ...workspace,
-                      shared: !workspace.shared,
-                    }),
-                  )
-                }
+                onClick={() => setIsShareOpen(true)}
               >
-                {activeWorkspace.shared ? "Make private" : "Share board"}
+                Share board
               </ToolbarButton>
             </div>
           </div>
@@ -1169,7 +1205,7 @@ export function MoodboardStudio({
                 {activeWorkspace.collaborators.map((person, index) => (
                   <div
                     key={`${person}-${index}`}
-                    className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-white/6 text-xs font-semibold text-white"
+                    className="flex h-9 w-9 items-center justify-center rounded-[8px] border border-white/10 bg-white/6 text-xs font-semibold text-white"
                   >
                     {person}
                   </div>
@@ -1184,17 +1220,17 @@ export function MoodboardStudio({
               <button
                 type="button"
                 onClick={() => updateZoom(activeWorkspace.view.zoom - 0.1)}
-                className="h-10 w-10 rounded-full border border-white/10 bg-white/5 text-lg"
+                className="h-10 w-10 rounded-[8px] border border-white/10 bg-white/5 text-lg"
               >
                 -
               </button>
-              <div className="min-w-20 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-center text-sm font-semibold">
+              <div className="min-w-20 rounded-[8px] border border-white/10 bg-white/5 px-4 py-2 text-center text-sm font-semibold">
                 {Math.round(activeWorkspace.view.zoom * 100)}%
               </div>
               <button
                 type="button"
                 onClick={() => updateZoom(activeWorkspace.view.zoom + 0.1)}
-                className="h-10 w-10 rounded-full border border-white/10 bg-white/5 text-lg"
+                className="h-10 w-10 rounded-[8px] border border-white/10 bg-white/5 text-lg"
               >
                 +
               </button>
@@ -1220,7 +1256,7 @@ export function MoodboardStudio({
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDoubleClick={handleDoubleClick}
-            className="relative mx-3 mb-3 flex-1 overflow-hidden rounded-[18px] border border-white/8 bg-[#0a0d11]"
+            className="relative mx-3 mb-3 flex-1 overflow-hidden rounded-[8px] border border-white/8 bg-[#0a0d11]"
           >
             <div className="pointer-events-none absolute inset-x-5 top-5 z-20 flex flex-wrap gap-2">
               <ViewerBadge tone="muted">Drag empty space to pan</ViewerBadge>
@@ -1232,7 +1268,7 @@ export function MoodboardStudio({
               className="pointer-events-none absolute inset-0 opacity-80"
               style={{
                 background:
-                  "radial-gradient(circle at top left, rgba(135,182,255,0.08), transparent 24%), radial-gradient(circle at bottom right, rgba(255,255,255,0.035), transparent 16%)",
+                  "linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0))",
               }}
             />
 
@@ -1245,7 +1281,7 @@ export function MoodboardStudio({
                 transformOrigin: "0 0",
               }}
             >
-              <div className="canvas-grid canvas-dots absolute inset-0 rounded-[40px]" />
+              <div className="canvas-grid canvas-dots absolute inset-0" />
 
               {activeWorkspace.items
                 .toSorted((left, right) => left.zIndex - right.zIndex)
@@ -1292,7 +1328,7 @@ export function MoodboardStudio({
                         </div>
                       ) : (
                         <div
-                          className={`h-full rounded-[24px] border ${
+                          className={`h-full rounded-[8px] border ${
                             isSelected
                               ? "border-[3px] border-[var(--accent)] bg-[rgba(15,19,25,0.92)]"
                               : "border-white/8 bg-[rgba(17,21,27,0.82)]"
@@ -1317,7 +1353,7 @@ export function MoodboardStudio({
                       {isSelected ? (
                         <div
                           data-handle="resize"
-                          className="absolute bottom-[-9px] right-[-9px] h-5 w-5 rounded-full border-2 border-white bg-[var(--accent)] shadow-[0_10px_20px_rgba(0,0,0,0.16)]"
+                          className="absolute bottom-[-9px] right-[-9px] h-5 w-5 rounded-[4px] border-2 border-white bg-[var(--accent)] shadow-[0_10px_20px_rgba(0,0,0,0.16)]"
                         />
                       ) : null}
                     </div>
@@ -1326,7 +1362,7 @@ export function MoodboardStudio({
             </div>
 
             {isDraggingFiles ? (
-              <div className="absolute inset-6 z-30 flex items-center justify-center rounded-[18px] border-2 border-dashed border-[var(--accent)] bg-[rgba(10,14,18,0.92)]">
+              <div className="absolute inset-6 z-30 flex items-center justify-center rounded-[8px] border-2 border-dashed border-[var(--accent)] bg-[rgba(10,14,18,0.92)]">
                 <div className="text-center">
                   <p className="text-xl font-semibold tracking-[-0.03em]">
                     Drop images into the board
@@ -1340,11 +1376,11 @@ export function MoodboardStudio({
           </div>
         </section>
 
-        <aside className="space-y-4 rounded-[20px] border border-white/8 bg-[rgba(14,17,22,0.86)] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.22)] backdrop-blur">
+        <aside className="space-y-4 rounded-[10px] border border-white/8 bg-[rgba(14,17,22,0.96)] p-4 shadow-[0_16px_60px_rgba(0,0,0,0.22)]">
           <PanelSection eyebrow="Inspector" title={selectedItem ? formatItemType(selectedItem.type) : "Board details"}>
             {selectedItem ? (
               <div className="space-y-4">
-                <div className="rounded-[20px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent)]">
+                <div className="rounded-[8px] bg-[var(--accent-soft)] px-4 py-3 text-sm text-[var(--accent)]">
                   Selected layer: {selectedItem.type === "image" ? selectedItem.label : "Text block"}
                 </div>
 
@@ -1360,7 +1396,7 @@ export function MoodboardStudio({
                               : item,
                           )
                         }
-                        className="min-h-28 w-full rounded-[16px] border border-white/8 bg-white/4 px-4 py-3 text-sm leading-7 text-white outline-none placeholder:text-white/28"
+                        className="min-h-28 w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm leading-7 text-white outline-none placeholder:text-white/28"
                       />
                     </Field>
 
@@ -1415,7 +1451,7 @@ export function MoodboardStudio({
                                 : item,
                             )
                           }
-                          className="h-12 w-full rounded-[16px] border border-white/8 bg-white/4 p-2"
+                          className="h-12 w-full rounded-[8px] border border-white/8 bg-white/4 p-2"
                         />
                       </Field>
 
@@ -1430,7 +1466,7 @@ export function MoodboardStudio({
                                   item.type === "text" ? { ...item, align } : item,
                                 )
                               }
-                              className={`rounded-2xl border px-3 py-3 text-sm font-semibold ${
+                              className={`rounded-[8px] border px-3 py-3 text-sm font-semibold ${
                                 selectedItem.align === align
                                   ? "border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)]"
                                   : "border-white/8 bg-white/4"
@@ -1455,7 +1491,7 @@ export function MoodboardStudio({
                               : item,
                           )
                         }
-                        className="w-full rounded-[16px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none placeholder:text-white/28"
+                        className="w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none placeholder:text-white/28"
                       />
                     </Field>
 
@@ -1566,7 +1602,7 @@ export function MoodboardStudio({
                           ),
                         }))
                       }
-                      className="w-full rounded-[16px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none"
+                      className="w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none"
                     />
                   </Field>
                   <Field label="Height">
@@ -1584,7 +1620,7 @@ export function MoodboardStudio({
                           ),
                         }))
                       }
-                      className="w-full rounded-[16px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none"
+                      className="w-full rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none"
                     />
                   </Field>
                 </div>
@@ -1596,7 +1632,7 @@ export function MoodboardStudio({
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="rounded-[16px] border border-white/8 bg-white/4 p-4">
+                <div className="rounded-[8px] border border-white/8 bg-white/4 p-4">
                   <p className="text-sm font-semibold">Board health</p>
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <MetricCard label="Images" value={workspaceImages.length} />
@@ -1609,7 +1645,7 @@ export function MoodboardStudio({
                   </div>
                 </div>
 
-                <div className="rounded-[16px] border border-white/8 bg-white/3 p-4 text-sm leading-7 text-[var(--muted)]">
+                <div className="rounded-[8px] border border-white/8 bg-white/3 p-4 text-sm leading-7 text-[var(--muted)]">
                   Use the left rail for board switching, drop files straight into the
                   canvas, and shape image crops from this inspector once a frame is
                   selected.
@@ -1636,13 +1672,89 @@ export function MoodboardStudio({
           </PanelSection>
         </aside>
       </div>
+
+      {isShareOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/55 p-4">
+          <div className="w-full max-w-xl rounded-[10px] border border-white/8 bg-[rgba(14,17,22,0.98)] p-5 shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-[var(--muted)]">
+                  Share Board
+                </p>
+                <h2 className="mt-2 text-2xl font-medium tracking-[-0.05em]">
+                  {activeWorkspace.name}
+                </h2>
+                <p className="mt-2 text-sm leading-7 text-[var(--muted)]">
+                  Invite collaborators or copy a direct board link.
+                </p>
+              </div>
+              <ToolbarButton onClick={() => setIsShareOpen(false)}>Close</ToolbarButton>
+            </div>
+
+            <div className="mt-5 grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
+              <div className="space-y-4">
+                <Field label="Invite by email">
+                  <div className="flex gap-2">
+                    <input
+                      value={inviteEmail}
+                      onChange={(event) => setInviteEmail(event.target.value)}
+                      placeholder="name@email.com"
+                      className="flex-1 rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-white outline-none placeholder:text-white/28"
+                    />
+                    <ToolbarButton onClick={handleInviteCollaborator}>Invite</ToolbarButton>
+                  </div>
+                </Field>
+
+                <Field label="Board link">
+                  <div className="flex gap-2">
+                    <div className="flex-1 truncate rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[var(--muted)]">
+                      {currentBoardLink}
+                    </div>
+                    <ToolbarButton onClick={() => void handleCopyBoardLink()}>
+                      Copy link
+                    </ToolbarButton>
+                  </div>
+                </Field>
+
+                {shareNotice ? (
+                  <div className="rounded-[8px] border border-white/8 bg-white/4 px-4 py-3 text-sm text-[var(--foreground)]">
+                    {shareNotice}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rounded-[8px] border border-white/8 bg-white/3 p-4">
+                <p className="text-sm font-medium text-white">People with access</p>
+                <div className="mt-4 space-y-2">
+                  {activeWorkspace.collaborators.map((person, index) => (
+                    <div
+                      key={`${person}-${index}`}
+                      className="flex items-center justify-between rounded-[8px] border border-white/8 bg-white/4 px-3 py-2"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-[6px] border border-white/10 bg-white/6 text-xs font-semibold">
+                          {person}
+                        </div>
+                        <div className="text-sm text-[var(--foreground)]">{person}</div>
+                      </div>
+                      <div className="text-xs uppercase tracking-[0.14em] text-[var(--muted)]">
+                        edit
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
 
 function FeatureStat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[16px] border border-white/8 bg-white/4 p-4">
+    <div className="rounded-[8px] border border-white/8 bg-white/4 p-4">
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
         {label}
       </p>
@@ -1665,7 +1777,7 @@ function ToolbarButton({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="rounded-full border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
+      className="rounded-[8px] border border-white/10 bg-white/5 px-4 py-2.5 text-sm font-medium transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-45"
     >
       {children}
     </button>
@@ -1680,7 +1792,7 @@ function MetricCard({
   value: number | string;
 }) {
   return (
-    <div className="rounded-[14px] border border-white/8 bg-white/4 p-3">
+    <div className="rounded-[8px] border border-white/8 bg-white/4 p-3">
       <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-[var(--muted)]">
         {label}
       </p>
@@ -1697,7 +1809,7 @@ function ShortcutRow({
   description: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-[14px] border border-white/8 bg-white/4 px-3 py-2.5">
+    <div className="flex items-center justify-between gap-3 rounded-[8px] border border-white/8 bg-white/4 px-3 py-2.5">
       <span className="font-mono text-xs uppercase tracking-[0.18em] text-[var(--foreground)]">
         {shortcut}
       </span>

@@ -8,8 +8,8 @@
   --line: rgba(255, 255, 255, 0.08);
   --panel: rgba(16, 19, 24, 0.84);
   --panel-strong: rgba(20, 24, 31, 0.96);
-  --accent: #87b6ff;
-  --accent-soft: rgba(135, 182, 255, 0.16);
+  --accent: #d6dbe2;
+  --accent-soft: rgba(214, 219, 226, 0.14);
   --canvas-grid: rgba(255, 255, 255, 0.048);
   --font-app-sans: "SF Pro Display", "Inter Tight", "Avenir Next", "Segoe UI", sans-serif;
   --font-app-mono: "SFMono-Regular", "IBM Plex Mono", "Cascadia Code", monospace;
@@ -27,10 +27,7 @@
 }
 
 html {
-  background:
-    radial-gradient(circle at top left, rgba(135, 182, 255, 0.1), transparent 26%),
-    radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.035), transparent 18%),
-    linear-gradient(180deg, #090b0e 0%, #0d1015 100%);
+  background: linear-gradient(180deg, #090b0e 0%, #0d1015 100%);
 }
 
 body {
@@ -55,7 +52,7 @@ textarea {
 }
 
 ::selection {
-  background: rgba(135, 182, 255, 0.22);
+  background: rgba(214, 219, 226, 0.22);
 }
 
 input[type="range"] {
